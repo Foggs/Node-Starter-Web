@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export interface HealthStatus {
-  status: string;
+export interface ConsentResponse {
+  /** Server-side ISO 8601 timestamp of when consent was recorded */
+  timestamp: Date;
 }

@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export interface HealthStatus {
-  status: string;
-}
+export type CloneVoiceBody = {
+  /** Manager's voice recording (30-60 seconds of natural speech) */
+  audio: Blob;
+};
