@@ -30,7 +30,7 @@ Active skills for this project:
 - [x] **7. Wire session middleware into Express app** — `artifacts/api-server/src/app.ts`: mount session before routes, `credentials: true` CORS, `express.json({ limit: '10mb' })`
 - [x] **8. Expand OpenAPI spec** — `lib/api-spec/openapi.yaml`: all 11 Exit Coach endpoints with full request/response schemas and 401 responses
 - [x] **9. Run API codegen** — regenerate `lib/api-client-react/src/generated/` and `lib/api-zod/src/generated/`; verify no type errors
-- [ ] **10. Create scenario & persona seed data** — `artifacts/api-server/src/data/scenarios.ts` (4 scenarios) and `artifacts/api-server/src/data/personas.ts` (5 personas)
+- [x] **10. Create scenario & persona seed data** — `artifacts/api-server/src/data/scenarios.ts` (4 scenarios) and `artifacts/api-server/src/data/personas.ts` (5 personas)
 - [ ] **11. Implement live route handlers** — `scenarios.ts`, `personas.ts`, `session.ts` (GET + PATCH), `ping.ts`
 - [ ] **12. Create stub route handlers** — `consent.ts`, `voice.ts`, `coaching.ts`, `report.ts`, `audio.ts` → all return `501`
 - [ ] **13. Register all routes** — `artifacts/api-server/src/routes/index.ts`: mount all routers; apply `sessionGuard` to protected routes
