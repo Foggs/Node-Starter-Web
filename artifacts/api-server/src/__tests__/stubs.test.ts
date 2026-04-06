@@ -63,11 +63,7 @@ describe("POST /api/improved-replay (stub)", () => {
   sharedStubAssertions("post", "/improved-replay");
 });
 
-// ─── POST /feedback-summary ───────────────────────────────────────────────────
-
-describe("POST /api/feedback-summary (stub)", () => {
-  sharedStubAssertions("post", "/feedback-summary");
-});
+// ─── POST /feedback-summary ── implemented in Task #6 Step 6.5; tested in feedbackSummary.test.ts ─
 
 // ─── POST /export-report ─────────────────────────────────────────────────────
 

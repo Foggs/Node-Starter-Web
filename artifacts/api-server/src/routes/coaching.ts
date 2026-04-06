@@ -279,10 +279,139 @@ router.post("/improved-replay", sessionGuard, (_req, res) => {
   res.status(501).json({ error: "Not implemented — coming in Task #6 Step 6.7" });
 });
 
+// ─── feedback-summary prompt builders ─────────────────────────────────────────
+
+function buildFeedbackSystemPrompt(): string {
+  return [
+    "You are an expert HR coaching consultant reviewing a manager's practice session.",
+    "You will receive the full conversation transcript with per-turn coaching observations.",
+    "",
+    "Your task is to synthesize the session into structured, actionable feedback:",
+    "1. Strengths: 2–4 specific things the manager did well across the entire session.",
+    "2. Improvements: 2–4 specific, actionable areas to develop. Be concrete — name the turn and behaviour.",
+    "3. Summary: A 2–3 sentence overall qualitative assessment. Lead with the most important takeaway.",
+    "",
+    'Respond ONLY with valid JSON in this exact format (no markdown, no other text):\n{"strengths":["..."],"improvements":["..."],"summary":"..."}',
+  ].join("\n");
+}
+
+function buildFeedbackUserPrompt(
+  scenario: (typeof scenarios)[number] | undefined,
+  persona: (typeof personas)[number] | undefined,
+  turns: Turn[],
+): string {
+  const header = [
+    `Session scenario: ${scenario?.name ?? "general HR conversation"}`,
+    `Employee persona: ${persona?.name ?? "general employee"} (${persona?.emotionalStyle ?? ""})`,
+    "",
+    "Conversation transcript:",
+    "",
+  ].join("\n");
+
+  // Sort all turns by turn_index, then employee before manager within the same index
+  const sorted = [...turns].sort((a, b) => {
+    if (a.turn_index !== b.turn_index) return a.turn_index - b.turn_index;
+    return a.role === "employee" ? -1 : 1;
+  });
+
+  const turnLines: string[] = [];
+  for (const t of sorted) {
+    if (t.role === "employee") {
+      turnLines.push(`Employee (turn ${t.turn_index}): "${t.transcript}"`);
+    } else {
+      turnLines.push(`Manager (turn ${t.turn_index}): "${t.transcript}"`);
+      if (t.coaching_tip) {
+        turnLines.push(
+          `  → Coaching note: "${t.coaching_tip}" (employee emotional intensity: ${t.emotion_score ?? "?"}/10)`,
+        );
+      }
+    }
+  }
+
+  return [header, ...turnLines, "", "Provide structured feedback for the manager based on the session above."].join(
+    "\n",
+  );
+}
+
+function parseFeedbackResponse(raw: string): {
+  strengths: string[];
+  improvements: string[];
+  summary: string;
+} {
+  try {
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) throw new Error("No JSON object found");
+
+    const parsed: unknown = JSON.parse(match[0]);
+    if (
+      typeof parsed === "object" &&
+      parsed !== null &&
+      "strengths" in parsed &&
+      "improvements" in parsed &&
+      "summary" in parsed &&
+      Array.isArray((parsed as Record<string, unknown>)["strengths"]) &&
+      Array.isArray((parsed as Record<string, unknown>)["improvements"]) &&
+      typeof (parsed as Record<string, unknown>)["summary"] === "string"
+    ) {
+      const { strengths, improvements, summary } = parsed as {
+        strengths: unknown[];
+        improvements: unknown[];
+        summary: string;
+      };
+      return {
+        strengths: strengths
+          .filter((s) => typeof s === "string")
+          .map((s) => String(s)),
+        improvements: improvements
+          .filter((s) => typeof s === "string")
+          .map((s) => String(s)),
+        summary,
+      };
+    }
+    throw new Error("Unexpected shape");
+  } catch {
+    return {
+      strengths: ["You completed the practice session — that alone takes courage."],
+      improvements: ["Review the per-turn coaching tips above for specific areas to develop."],
+      summary:
+        raw.trim() ||
+        "Session complete. Review your per-turn coaching tips and try another run to track improvement.",
+    };
+  }
+}
+
 // ─── POST /api/feedback-summary ──────────────────────────────────────────────
 
-router.post("/feedback-summary", sessionGuard, (_req, res) => {
-  res.status(501).json({ error: "Not implemented — coming in Task #6 Step 6.5" });
+router.post("/feedback-summary", llmRateLimit, sessionGuard, async (req, res) => {
+  const turns = req.session.turns ?? [];
+  const managerTurns = turns.filter((t) => t.role === "manager");
+
+  if (managerTurns.length === 0) {
+    res.status(400).json({
+      error: "No manager turns in session — complete at least one turn before requesting feedback",
+    });
+    return;
+  }
+
+  const scenario = scenarios.find((s) => s.id === req.session.scenario);
+  const persona = personas.find((p) => p.id === req.session.persona);
+
+  const rawResponse = await chatCompletion(
+    [
+      { role: "system", content: buildFeedbackSystemPrompt() },
+      { role: "user", content: buildFeedbackUserPrompt(scenario, persona, turns) },
+    ],
+    { temperature: 0.6, max_tokens: 600 },
+  );
+
+  const { strengths, improvements, summary } = parseFeedbackResponse(rawResponse);
+
+  // Emotion arc: emotion_score per manager turn in order (1-indexed)
+  const emotionArc = managerTurns
+    .sort((a, b) => a.turn_index - b.turn_index)
+    .map((t) => t.emotion_score ?? 5);
+
+  res.status(200).json({ strengths, improvements, summary, emotionArc });
 });
 
 export default router;
