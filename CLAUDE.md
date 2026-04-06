@@ -43,3 +43,32 @@ Active skills for this project:
 - All API keys are server-side only; validated at startup
 - Session cookie: HttpOnly, Secure (prod), SameSite=Strict, 2-hour rolling expiry
 - Rate limiters keyed by session ID (not IP)
+
+---
+
+## Current Sprint — Task #5: Consent Gate & Voice Cloning
+
+### Status: In Progress
+
+### What this task delivers
+BIPA/GDPR consent logging, microphone recording, ElevenLabs Instant Voice Cloning, voice preview TTS, session expiry cleanup, and the fully wired frontend for the first two user-flow steps (Consent → Onboarding).
+
+### Checklist
+
+- [x] **1. Implement `POST /api/consent`** — validate `ConsentRequest` body (Zod), reject `consentGiven: false` with 400, set `session.consent_given = true` + `session.consent_timestamp`, return `{ timestamp }`. Apply `llmRateLimit`.
+- [ ] **2. Create ElevenLabs HTTP client** — `artifacts/api-server/src/lib/elevenlabs.ts`: typed `cloneVoice(audio, name)`, `deleteVoice(voiceId)`, `synthesizeSpeech(voiceId, text)` functions using native `fetch`; all errors throw a structured `ElevenLabsError`
+- [ ] **3. Implement `POST /api/clone-voice`** — `multer` single-file upload, validate MIME type (`audio/*`), call `cloneVoice`, store `voice_id` in session (`voice_cloned = true`); on ElevenLabs error set `voice_cloned = false` (graceful fallback), return `CloneVoiceResponse`; apply `voiceRateLimit`
+- [ ] **4. Implement `GET /api/voice/preview`** — call ElevenLabs TTS with session `voice_id` (or a generic voice when `voice_cloned = false`), pipe `audio/mpeg` response to client; apply `voiceRateLimit`
+- [ ] **5. Session expiry cleanup** — extend `sessionMiddleware` to register a memorystore `destroy` callback that calls `deleteVoice(voice_id)` when a session carrying a `voice_id` expires; ensures voice data is deleted within 2 hours
+- [ ] **6. Wire frontend consent page** — use `useRecordConsent` mutation hook; call on "Continue", navigate to `/onboarding` on success, surface API errors inline
+- [ ] **7. Wire frontend onboarding page** — MediaRecorder API → `Blob` → `FormData`; call `useCloneVoice` mutation; show success/fallback banner; navigate to `/setup` on completion
+- [ ] **8. Add voice preview UI to onboarding** — after successful clone, show "▶ Hear your voice" button; `GET /api/voice/preview` → `Audio` object → play; disable if voice_cloned is false
+- [ ] **9. Wire setup page to `PATCH /api/session`** — call `useUpdateSession` mutation when scenario or persona selection changes; persist to server session so it survives page refresh
+- [x] **10. Augment session type for consent_timestamp** — add `consent_timestamp: string | undefined` to `session.d.ts` `SessionData`
+
+### Key constraints
+- `voice_id` is stored in server-side session **only** — never in a response body, log line, or error message
+- Raw audio files are never persisted to disk — `multer` uses `memoryStorage`
+- ElevenLabs `deleteVoice` must be called on **every** session expiry that carries a `voice_id`
+- Consent endpoint must reject `consentGiven: false` — logging a refusal is not valid consent
+- `voiceRateLimit` (10/min): clone-voice, voice/preview — `llmRateLimit` (30/min): consent
