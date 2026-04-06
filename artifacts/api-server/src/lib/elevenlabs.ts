@@ -85,7 +85,7 @@ export async function cloneVoice(
 ): Promise<string> {
   const form = new FormData();
   form.append("name", name);
-  form.append("files", new Blob([audio], { type: mimeType }), "recording");
+  form.append("files", new Blob([new Uint8Array(audio)], { type: mimeType }), "recording");
 
   const res = await fetch(`${BASE_URL}/v1/voices/add`, {
     method: "POST",

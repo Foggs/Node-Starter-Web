@@ -72,3 +72,37 @@ BIPA/GDPR consent logging, microphone recording, ElevenLabs Instant Voice Clonin
 - ElevenLabs `deleteVoice` must be called on **every** session expiry that carries a `voice_id`
 - Consent endpoint must reject `consentGiven: false` — logging a refusal is not valid consent
 - `voiceRateLimit` (10/min): clone-voice, voice/preview — `llmRateLimit` (30/min): consent
+
+---
+
+## Current Sprint — Task #6: Practice Session, Feedback & PDF Export
+
+### Status: In Progress
+
+### What this task delivers
+Full turn-based practice session (Whisper transcription, GPT-4o-mini coaching tip + emotion score, ElevenLabs Agent for employee voice), sessionStorage crash recovery, strengths-first feedback panel with Recharts emotion arc, side-by-side improved replay with progressive cloned-voice TTS, and anonymized PDF coaching report export.
+
+### Checklist
+
+- [x] **6.1 OpenAI integration + sanitizer** — `lib/openai.ts`: lazy-init client, `transcribeAudio(buffer, mimeType)` (Whisper `whisper-1`), `chatCompletion(messages, opts?)` (GPT-4o-mini); `lib/sanitize.ts`: strip prompt-injection patterns, enforce 2,000-char limit; TDD tests for sanitizer
+- [ ] **6.2 Implement `POST /api/coaching-tip`** — multer audio upload → Whisper transcription → sanitize → build system prompt (scenario + persona) → GPT-4o-mini returns `{ coaching_tip, emotion_score (1–10) }` → append turn to `session.turns`; return `CoachingTipResponse`; apply `llmRateLimit`; tests: happy path, 400 on missing audio, 401 on missing scenario/persona in session
+- [ ] **6.3 Build frontend session page** — `ConversationInterface` component: turn counter (1–5), ElevenLabs Agent WebSocket for employee voice, manager recording → POST /api/coaching-tip → coaching tip overlay, auto-close after turn 5; `SessionRecoveryBanner` shown on load if sessionStorage checkpoint detected
+- [ ] **6.4 sessionStorage checkpointing** — save `{ turns, scenario, persona }` to `sessionStorage` after every completed manager turn; restore on page load; clear on session complete
+- [ ] **6.5 Implement `POST /api/feedback-summary`** — build GPT-4o-mini prompt from all session turns → return `{ strengths[], improvements[], summary }`; apply `llmRateLimit`; tests: happy path, 401 on no turns in session
+- [ ] **6.6 Build feedback page frontend** — `FeedbackPanel`: strengths-first list, per-turn coaching recap, improvements, qualitative summary; Emotion Arc Chart (Recharts `LineChart`, emotion_score 1–10 per turn); wire to `POST /api/feedback-summary`
+- [ ] **6.7 Implement `POST /api/improved-replay`** — for each manager turn: rewrite with GPT-4o-mini prompt → synthesize TTS with cloned voice (or generic fallback) → store audio `Buffer` keyed by `turnId` in `session.turns`; return `{ turns: [{ turnId, original, improved }] }`; apply `llmRateLimit`; tests: happy path, 401 on no turns
+- [ ] **6.8 Implement `GET /api/audio/:turnId`** — serve `audio/mpeg` buffer from `session.turns` by `turnId`; 404 if not found
+- [ ] **6.9 Build improved replay frontend** — `ImprovedReplay`: side-by-side transcript (original vs. improved), per-turn audio playback via `GET /api/audio/:turnId`; progressive generation starts after turn 1 completes
+- [ ] **6.10 Implement `POST /api/export-report`** — `pdfkit` one-page anonymized coaching report: scenario name, persona name, turn count, voice_cloned flag, strengths, improvements, emotion arc data; stream `application/pdf`; no PII
+- [ ] **6.11 Wire export button on feedback page** — call `POST /api/export-report`, trigger browser download via blob URL
+
+### Key constraints
+- `OPENAI_API_KEY` server-side only — never exposed to frontend
+- All transcripts sanitized through `sanitizeTranscript()` before any LLM call
+- `session.turns` is the single source of truth — no DB writes in MVP
+- Whisper model: `whisper-1`; LLM model: `gpt-4o-mini`; TTS model: `eleven_turbo_v2`
+- Max transcript: 2,000 chars; truncate silently after sanitization
+- Emotion scores stored on manager turns (alongside coaching tip) — score reflects employee's projected emotional state after manager's turn
+- `llmRateLimit` (30/min) applied to: coaching-tip, feedback-summary, improved-replay
+- PDF must contain zero PII — no names, no transcripts, no voice data
+- Audio buffers stored in session memory only — cleared when session expires
