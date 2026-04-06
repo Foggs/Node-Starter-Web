@@ -2,14 +2,27 @@ openapi: 3.1.0
 info:
   # Do not change the title, if the title changes, the import paths will be broken
   title: Api
-  version: 0.1.0
-  description: API specification
+  version: 0.2.0
+  description: Exit Coach API specification
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: ping
+    description: Keep-alive operations
+  - name: session
+    description: Session state management
+  - name: consent
+    description: Biometric consent capture (BIPA/GDPR)
+  - name: voice
+    description: Voice cloning and TTS operations
+  - name: coaching
+    description: Practice session, transcription, and coaching operations
+  - name: report
+    description: PDF coaching report generation
+
 paths:
   /healthz:
     get:
@@ -24,7 +37,294 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /ping:
+    get:
+      operationId: ping
+      tags: [ping]
+      summary: Keep-alive ping
+      description: Resets session expiry to prevent Replit cold starts during active sessions
+      responses:
+        "200":
+          description: Pong
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok:
+                    type: boolean
+                required:
+                  - ok
+
+  /scenarios:
+    get:
+      operationId: listScenarios
+      tags: [session]
+      summary: List all practice scenarios
+      description: Returns the 4 built-in practice scenarios. No session required.
+      responses:
+        "200":
+          description: Array of scenarios
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Scenario"
+
+  /personas:
+    get:
+      operationId: listPersonas
+      tags: [session]
+      summary: List all employee personas
+      description: Returns the 5 built-in employee personas. No session required.
+      responses:
+        "200":
+          description: Array of personas
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Persona"
+
+  /session:
+    get:
+      operationId: getSession
+      tags: [session]
+      summary: Get current session state
+      description: Returns sanitised session state. voice_id is never returned to the frontend.
+      responses:
+        "200":
+          description: Current session state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionState"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+    patch:
+      operationId: updateSession
+      tags: [session]
+      summary: Update scenario or persona selection
+      description: Stores the selected scenario and/or persona in the server-side session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                scenario:
+                  type: string
+                persona:
+                  type: string
+      responses:
+        "200":
+          description: Updated session state
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionState"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /consent:
+    post:
+      operationId: recordConsent
+      tags: [consent]
+      summary: Record biometric consent
+      description: |
+        Logs timestamped biometric consent before any voice recording begins.
+        Required by BIPA and GDPR before collecting any voice biometric data.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ConsentRequest"
+      responses:
+        "200":
+          description: Consent recorded with server timestamp
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConsentResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /clone-voice:
+    post:
+      operationId: cloneVoice
+      tags: [voice]
+      summary: Clone the manager's voice
+      description: |
+        Accepts a 30-60s audio recording and creates an ElevenLabs Instant Voice Clone.
+        The resulting voice_id is stored in the server-side session only — never returned to the frontend.
+        Falls back to a generic voice if cloning fails.
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                audio:
+                  type: string
+                  format: binary
+                  description: Manager's voice recording (30-60 seconds of natural speech)
+              required:
+                - audio
+      responses:
+        "200":
+          description: Voice clone created or fallback triggered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CloneVoiceResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /voice/preview:
+    get:
+      operationId: getVoicePreview
+      tags: [voice]
+      summary: Play a TTS sample in the cloned voice
+      description: Synthesises a short sample phrase in the manager's cloned voice for confirmation
+      responses:
+        "200":
+          description: Audio sample in the cloned voice
+          content:
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /coaching-tip:
+    post:
+      operationId: getCoachingTip
+      tags: [coaching]
+      summary: Transcribe audio and return a coaching tip
+      description: |
+        Transcribes the manager's recorded turn with OpenAI Whisper,
+        then uses GPT-4o-mini to return a coaching tip (strengths + improvement)
+        and an emotion score (1-10) for the employee's simulated emotional state.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CoachingTipRequest"
+      responses:
+        "200":
+          description: Transcript, coaching tip, and emotion score
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CoachingTipResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /improved-replay:
+    post:
+      operationId: generateImprovedReplay
+      tags: [coaching]
+      summary: Generate improved replay of the session
+      description: |
+        Rewrites all manager turns using GPT-4o-mini, then generates TTS audio
+        for each rewritten turn in the manager's cloned voice.
+        Progressive generation begins after turn 1 to hide end-of-session latency.
+      responses:
+        "200":
+          description: Array of improved turns with transcripts and audio URLs
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ImprovedTurn"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /feedback-summary:
+    post:
+      operationId: generateFeedbackSummary
+      tags: [coaching]
+      summary: Generate session feedback summary
+      description: |
+        Produces a strengths-first coaching summary for the completed session,
+        including per-turn recap, areas for improvement, qualitative assessment,
+        and an emotion arc array for charting.
+      responses:
+        "200":
+          description: Feedback summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FeedbackSummary"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /export-report:
+    post:
+      operationId: exportReport
+      tags: [report]
+      summary: Export anonymised PDF coaching report
+      description: |
+        Generates a one-page anonymised coaching report as a PDF.
+        Contains no PII, no voice data. Safe to share with HR or a coach.
+      responses:
+        "200":
+          description: PDF coaching report
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /audio/{turnId}:
+    get:
+      operationId: getAudio
+      tags: [coaching]
+      summary: Serve generated improved-replay audio
+      description: Returns the audio file for a specific improved-replay turn
+      parameters:
+        - name: turnId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Identifier of the generated audio turn
+      responses:
+        "200":
+          description: Audio file for the specified turn
+          content:
+            audio/mpeg:
+              schema:
+                type: string
+                format: binary
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
 components:
+  responses:
+    Unauthorized:
+      description: No active session
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+            required:
+              - error
+
   schemas:
     HealthStatus:
       type: object
@@ -34,3 +334,211 @@ components:
       required:
         - status
 
+    Scenario:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique scenario identifier
+          enum:
+            - performance_issue
+            - layoff
+            - misconduct
+            - pip_failure
+        name:
+          type: string
+        description:
+          type: string
+      required:
+        - id
+        - name
+        - description
+
+    Persona:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique persona identifier
+          enum:
+            - tearful
+            - defensive
+            - withdrawn
+            - professional
+            - angry
+        name:
+          type: string
+        emotionalStyle:
+          type: string
+        description:
+          type: string
+      required:
+        - id
+        - name
+        - emotionalStyle
+        - description
+
+    Turn:
+      type: object
+      description: A single conversation turn in the practice session
+      properties:
+        turn_index:
+          type: integer
+          minimum: 1
+          maximum: 5
+        role:
+          type: string
+          enum:
+            - employee
+            - manager
+        transcript:
+          type: string
+          maxLength: 2000
+        coaching_tip:
+          type: string
+          description: Present on manager turns only
+        emotion_score:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: Employee emotional intensity (1=calm, 10=highly distressed/angry). Present on employee turns only.
+      required:
+        - turn_index
+        - role
+        - transcript
+
+    SessionState:
+      type: object
+      description: Sanitised session state — voice_id is never included
+      properties:
+        consent_given:
+          type: boolean
+        voice_cloned:
+          type: boolean
+        voice_id_present:
+          type: boolean
+          description: Whether a voice_id exists in the session (the ID itself is never returned)
+        scenario:
+          type: string
+          nullable: true
+        persona:
+          type: string
+          nullable: true
+        turns:
+          type: array
+          items:
+            $ref: "#/components/schemas/Turn"
+      required:
+        - consent_given
+        - voice_cloned
+        - voice_id_present
+        - turns
+
+    ConsentRequest:
+      type: object
+      properties:
+        consentGiven:
+          type: boolean
+          description: Must be true; server rejects false
+      required:
+        - consentGiven
+
+    ConsentResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+          description: Server-side ISO 8601 timestamp of when consent was recorded
+      required:
+        - timestamp
+
+    CloneVoiceResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        fallback:
+          type: boolean
+          description: True when voice cloning failed and a generic ElevenLabs voice will be used instead
+      required:
+        - success
+        - fallback
+
+    CoachingTipRequest:
+      type: object
+      properties:
+        audioUrl:
+          type: string
+          description: Reference to the recorded manager audio for Whisper transcription
+        turnIndex:
+          type: integer
+          minimum: 1
+          maximum: 5
+      required:
+        - audioUrl
+        - turnIndex
+
+    CoachingTipResponse:
+      type: object
+      properties:
+        transcript:
+          type: string
+          description: Whisper-transcribed text of the manager's turn
+        coachingTip:
+          type: string
+          description: GPT-4o-mini coaching tip (strength + improvement) for this turn
+        emotionScore:
+          type: integer
+          minimum: 1
+          maximum: 10
+          description: Simulated employee emotional intensity score
+      required:
+        - transcript
+        - coachingTip
+        - emotionScore
+
+    ImprovedTurn:
+      type: object
+      description: A rewritten manager turn with optional audio URL
+      properties:
+        turnIndex:
+          type: integer
+        originalTranscript:
+          type: string
+        improvedTranscript:
+          type: string
+        audioUrl:
+          type: string
+          description: URL to the generated TTS audio file (available once generated)
+      required:
+        - turnIndex
+        - originalTranscript
+        - improvedTranscript
+
+    FeedbackSummary:
+      type: object
+      properties:
+        strengths:
+          type: array
+          items:
+            type: string
+          description: Things the manager did well across the session
+        improvements:
+          type: array
+          items:
+            type: string
+          description: Specific, actionable areas for improvement
+        summary:
+          type: string
+          description: Qualitative overall assessment of the session
+        emotionArc:
+          type: array
+          items:
+            type: integer
+          description: Emotion scores (1-10) for each employee turn in sequence, used for the Emotion Arc Chart
+      required:
+        - strengths
+        - improvements
+        - summary
+        - emotionArc
