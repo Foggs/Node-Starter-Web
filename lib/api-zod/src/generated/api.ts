@@ -203,12 +203,14 @@ and an emotion score (1-10) for the employee's simulated emotional state.
 export const getCoachingTipBodyTurnIndexMax = 5;
 
 export const GetCoachingTipBody = zod.object({
-  audioUrl: zod
-    .string()
-    .describe(
-      "Reference to the recorded manager audio for Whisper transcription",
-    ),
-  turnIndex: zod.number().min(1).max(getCoachingTipBodyTurnIndexMax),
+  audio: zod
+    .instanceof(File)
+    .describe("Manager's recorded audio turn (WebM, MP4, or OGG)"),
+  turnIndex: zod
+    .number()
+    .min(1)
+    .max(getCoachingTipBodyTurnIndexMax)
+    .describe("Turn number (1–5)"),
 });
 
 export const getCoachingTipResponseEmotionScoreMax = 10;

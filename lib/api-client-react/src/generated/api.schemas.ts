@@ -108,9 +108,10 @@ export interface CloneVoiceResponse {
 }
 
 export interface CoachingTipRequest {
-  /** Reference to the recorded manager audio for Whisper transcription */
-  audioUrl: string;
+  /** Manager's recorded audio turn (WebM, MP4, or OGG) */
+  audio: Blob;
   /**
+   * Turn number (1–5)
    * @minimum 1
    * @maximum 5
    */

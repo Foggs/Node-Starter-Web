@@ -768,11 +768,14 @@ export const getCoachingTip = async (
   coachingTipRequest: CoachingTipRequest,
   options?: RequestInit,
 ): Promise<CoachingTipResponse> => {
+  const formData = new FormData();
+  formData.append(`audio`, coachingTipRequest.audio);
+  formData.append(`turnIndex`, coachingTipRequest.turnIndex.toString());
+
   return customFetch<CoachingTipResponse>(getGetCoachingTipUrl(), {
     ...options,
     method: "POST",
-    headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(coachingTipRequest),
+    body: formData,
   });
 };
 

@@ -215,7 +215,7 @@ paths:
       requestBody:
         required: true
         content:
-          application/json:
+          multipart/form-data:
             schema:
               $ref: "#/components/schemas/CoachingTipRequest"
       responses:
@@ -468,15 +468,17 @@ components:
     CoachingTipRequest:
       type: object
       properties:
-        audioUrl:
+        audio:
           type: string
-          description: Reference to the recorded manager audio for Whisper transcription
+          format: binary
+          description: Manager's recorded audio turn (WebM, MP4, or OGG)
         turnIndex:
           type: integer
           minimum: 1
           maximum: 5
+          description: Turn number (1–5)
       required:
-        - audioUrl
+        - audio
         - turnIndex
 
     CoachingTipResponse:

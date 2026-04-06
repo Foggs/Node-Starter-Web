@@ -55,11 +55,7 @@ function sharedStubAssertions(
 
 // ─── GET /voice/preview ── implemented in Task #5 Step 4; tested in voicePreview.test.ts ─
 
-// ─── POST /coaching-tip ───────────────────────────────────────────────────────
-
-describe("POST /api/coaching-tip (stub)", () => {
-  sharedStubAssertions("post", "/coaching-tip");
-});
+// ─── POST /coaching-tip ── implemented in Task #6 Step 6.2; tested in coaching.test.ts ─
 
 // ─── POST /improved-replay ────────────────────────────────────────────────────
 
