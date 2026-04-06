@@ -62,8 +62,8 @@ BIPA/GDPR consent logging, microphone recording, ElevenLabs Instant Voice Clonin
 - [x] **5. Session expiry cleanup** — extend `sessionMiddleware` to register a memorystore `destroy` callback that calls `deleteVoice(voice_id)` when a session carrying a `voice_id` expires; ensures voice data is deleted within 2 hours
 - [x] **6. Wire frontend consent page** — use `useRecordConsent` mutation hook; call on "Continue", navigate to `/onboarding` on success, surface API errors inline
 - [x] **7. Wire frontend onboarding page** — MediaRecorder API → `Blob` → `FormData`; call `useCloneVoice` mutation; show success/fallback banner; navigate to `/setup` on completion
-- [ ] **8. Add voice preview UI to onboarding** — after successful clone, show "▶ Hear your voice" button; `GET /api/voice/preview` → `Audio` object → play; disable if voice_cloned is false
-- [ ] **9. Wire setup page to `PATCH /api/session`** — call `useUpdateSession` mutation when scenario or persona selection changes; persist to server session so it survives page refresh
+- [x] **8. Add voice preview UI to onboarding** — after successful clone, show "▶ Hear your voice" button; `GET /api/voice/preview` → `Audio` object → play; disable if voice_cloned is false
+- [x] **9. Wire setup page to `PATCH /api/session`** — call `useUpdateSession` mutation when scenario or persona selection changes; persist to server session so it survives page refresh
 - [x] **10. Augment session type for consent_timestamp** — add `consent_timestamp: string | undefined` to `session.d.ts` `SessionData`
 
 ### Key constraints

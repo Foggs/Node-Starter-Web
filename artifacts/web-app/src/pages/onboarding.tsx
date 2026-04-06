@@ -9,8 +9,10 @@ import {
   Loader2,
   AlertTriangle,
   WifiOff,
+  Play,
+  Square,
 } from "lucide-react";
-import { useCloneVoice } from "@workspace/api-client-react";
+import { useCloneVoice, getVoicePreview } from "@workspace/api-client-react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -58,6 +60,11 @@ export default function Onboarding() {
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // ── voice preview ──────────────────────────────────────────────────────────
+  type PreviewState = "idle" | "loading" | "playing" | "error";
+  const [previewState, setPreviewState] = useState<PreviewState>("idle");
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Stop mic stream and timer on unmount
   useEffect(() => {
@@ -149,6 +156,51 @@ export default function Onboarding() {
     setShortWarning(false);
     timerRef.current && clearInterval(timerRef.current);
     recorderRef.current?.stop();
+  }, []);
+
+  // ── voice preview handler ──────────────────────────────────────────────────
+
+  const handlePreview = useCallback(async () => {
+    // Toggle: if playing, stop
+    if (previewState === "playing") {
+      audioRef.current?.pause();
+      audioRef.current = null;
+      setPreviewState("idle");
+      return;
+    }
+    if (previewState === "loading") return;
+
+    setPreviewState("loading");
+    let objectUrl: string | null = null;
+
+    try {
+      const blob = await getVoicePreview();
+      objectUrl = URL.createObjectURL(blob);
+      const audio = new Audio(objectUrl);
+      audioRef.current = audio;
+
+      audio.onended = () => {
+        setPreviewState("idle");
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+      };
+      audio.onerror = () => {
+        setPreviewState("error");
+        if (objectUrl) URL.revokeObjectURL(objectUrl);
+      };
+
+      await audio.play();
+      setPreviewState("playing");
+    } catch {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      setPreviewState("error");
+    }
+  }, [previewState]);
+
+  // Stop audio on unmount
+  useEffect(() => {
+    return () => {
+      audioRef.current?.pause();
+    };
   }, []);
 
   // ── derived UI state ───────────────────────────────────────────────────────
@@ -322,31 +374,86 @@ export default function Onboarding() {
           </CardContent>
         </Card>
 
-        {/* Success banner */}
+        {/* Success banner + preview */}
         {phase === "success" && (
-          <div className="flex gap-3 bg-green-50 border border-green-200 rounded-lg p-4 mb-6 text-sm text-green-800">
-            <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-green-600" />
-            <div>
-              <p className="font-semibold">Your voice has been cloned.</p>
-              <p className="text-green-700 mt-0.5">
-                The improved replay at the end of your session will be read back
-                to you in your own voice.
-              </p>
+          <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-6 text-sm text-green-800">
+            <div className="flex gap-3">
+              <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5 text-green-600" />
+              <div className="flex-1">
+                <p className="font-semibold">Your voice has been cloned.</p>
+                <p className="text-green-700 mt-0.5">
+                  The improved replay at the end of your session will be read
+                  back to you in your own voice.
+                </p>
+              </div>
+            </div>
+
+            {/* Preview button */}
+            <div className="mt-3 flex items-center gap-3">
+              <button
+                onClick={() => void handlePreview()}
+                disabled={previewState === "loading"}
+                className={cn(
+                  "flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold transition-all border",
+                  previewState === "playing"
+                    ? "bg-green-600 text-white border-green-600 hover:bg-green-700"
+                    : "bg-white text-green-700 border-green-300 hover:bg-green-100 disabled:opacity-50 disabled:cursor-wait",
+                )}
+              >
+                {previewState === "loading" ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Loading…
+                  </>
+                ) : previewState === "playing" ? (
+                  <>
+                    <Square className="w-3.5 h-3.5 fill-current" />
+                    Stop
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-3.5 h-3.5 fill-current" />
+                    Hear your voice
+                  </>
+                )}
+              </button>
+
+              {previewState === "error" && (
+                <span className="text-xs text-red-600">
+                  Preview failed — you can still continue.
+                </span>
+              )}
             </div>
           </div>
         )}
 
-        {/* Fallback banner */}
+        {/* Fallback banner — preview disabled */}
         {phase === "fallback" && (
-          <div className="flex gap-3 bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 text-sm text-amber-800">
-            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
-            <div>
-              <p className="font-semibold">
-                Voice cloning isn't available right now.
-              </p>
-              <p className="text-amber-700 mt-0.5">
-                You can still complete the full practice session — the replay
-                will use a generic voice instead of your own.
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 mb-6 text-sm text-amber-800">
+            <div className="flex gap-3">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
+              <div>
+                <p className="font-semibold">
+                  Voice cloning isn't available right now.
+                </p>
+                <p className="text-amber-700 mt-0.5">
+                  You can still complete the full practice session — the replay
+                  will use a generic voice instead of your own.
+                </p>
+              </div>
+            </div>
+
+            {/* Preview disabled on fallback path */}
+            <div className="mt-3">
+              <button
+                disabled
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold border bg-white text-slate-400 border-slate-200 cursor-not-allowed opacity-50"
+              >
+                <Play className="w-3.5 h-3.5 fill-current" />
+                Hear your voice
+              </button>
+              <p className="text-xs text-amber-700 mt-1.5">
+                Voice preview is unavailable when using the generic voice.
               </p>
             </div>
           </div>
