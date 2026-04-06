@@ -2,7 +2,21 @@ import { Router, type IRouter } from "express";
 import multer from "multer";
 import { sessionGuard } from "../middlewares/sessionGuard.js";
 import { voiceRateLimit } from "../middlewares/rateLimits.js";
-import { cloneVoice, ElevenLabsError } from "../lib/elevenlabs.js";
+import { cloneVoice, synthesizeSpeech, ElevenLabsError } from "../lib/elevenlabs.js";
+
+/**
+ * A well-known ElevenLabs pre-built voice used when the manager has not cloned
+ * their own voice (or when cloning failed and the fallback path was taken).
+ * "Adam" — neutral, professional, clear.
+ */
+const FALLBACK_VOICE_ID = "pNInz6obpgDQGcFmaJgB";
+
+/**
+ * Short sample read aloud to let the manager confirm their cloned voice sounds
+ * correct before starting the practice session.
+ */
+const PREVIEW_TEXT =
+  "Thank you for meeting with me today. I want to discuss something important regarding your role, and I appreciate you taking the time.";
 
 const router: IRouter = Router();
 
@@ -64,10 +78,32 @@ router.post(
 );
 
 // ─── GET /api/voice/preview ───────────────────────────────────────────────────
-// Implemented in Task #5 Step 4
 
-router.get("/voice/preview", voiceRateLimit, sessionGuard, (_req, res) => {
-  res.status(501).json({ error: "Not implemented — coming in Task #5 Step 4" });
+router.get("/voice/preview", voiceRateLimit, sessionGuard, async (req, res) => {
+  // Use the manager's cloned voice if available; fall back to a generic voice
+  const voiceId =
+    req.session.voice_cloned && req.session.voice_id
+      ? req.session.voice_id
+      : FALLBACK_VOICE_ID;
+
+  try {
+    const audioBuffer = await synthesizeSpeech(voiceId, PREVIEW_TEXT);
+
+    res.set({
+      "Content-Type": "audio/mpeg",
+      "Content-Length": String(audioBuffer.length),
+      // Never cache — each preview must reflect the current session voice
+      "Cache-Control": "no-store",
+    });
+    res.status(200).send(audioBuffer);
+  } catch (err) {
+    if (err instanceof ElevenLabsError) {
+      // Return a clean error — do NOT include the voice_id in the message
+      res.status(502).json({ error: "Failed to generate voice preview" });
+      return;
+    }
+    throw err;
+  }
 });
 
 export default router;

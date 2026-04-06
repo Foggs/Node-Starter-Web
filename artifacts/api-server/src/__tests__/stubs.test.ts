@@ -53,11 +53,7 @@ function sharedStubAssertions(
 
 // ─── POST /clone-voice ── implemented in Task #5 Step 3; tested in cloneVoice.test.ts ─
 
-// ─── GET /voice/preview ───────────────────────────────────────────────────────
-
-describe("GET /api/voice/preview (stub)", () => {
-  sharedStubAssertions("get", "/voice/preview");
-});
+// ─── GET /voice/preview ── implemented in Task #5 Step 4; tested in voicePreview.test.ts ─
 
 // ─── POST /coaching-tip ───────────────────────────────────────────────────────
 
