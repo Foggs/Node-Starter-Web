@@ -5,6 +5,14 @@
  * Exit Coach API specification
  * OpenAPI spec version: 0.2.0
  */
+/**
+ * Generic error response body
+ */
+export interface ErrorResponse {
+  /** Human-readable error message */
+  error: string;
+}
+
 export interface HealthStatus {
   status: string;
 }
@@ -129,6 +137,20 @@ export interface CoachingTipResponse {
    * @maximum 10
    */
   emotionScore: number;
+}
+
+/**
+ * The employee's generated turn text and its position in the session
+ */
+export interface EmployeeTurnResponse {
+  /** The employee's generated utterance for this turn */
+  transcript: string;
+  /**
+   * The manager turn number this employee turn precedes (1-5)
+   * @minimum 1
+   * @maximum 5
+   */
+  turnIndex: number;
 }
 
 /**

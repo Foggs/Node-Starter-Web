@@ -23,6 +23,8 @@ import type {
   CoachingTipResponse,
   ConsentRequest,
   ConsentResponse,
+  EmployeeTurnResponse,
+  ErrorResponse,
   FeedbackSummary,
   HealthStatus,
   ImprovedTurn,
@@ -844,6 +846,94 @@ export const useGetCoachingTip = <
   TContext
 > => {
   return useMutation(getGetCoachingTipMutationOptions(options));
+};
+
+/**
+ * Uses GPT-4o-mini with the persona's system prompt and the full conversation
+history to generate the employee's next utterance. The result is stored in
+the server-side session as an employee turn. Call once before each manager
+recording round (including the very first turn).
+
+ * @summary Generate the next employee turn
+ */
+export const getGenerateEmployeeTurnUrl = () => {
+  return `/api/employee-turn`;
+};
+
+export const generateEmployeeTurn = async (
+  options?: RequestInit,
+): Promise<EmployeeTurnResponse> => {
+  return customFetch<EmployeeTurnResponse>(getGenerateEmployeeTurnUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getGenerateEmployeeTurnMutationOptions = <
+  TError = ErrorType<ErrorResponse | UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateEmployeeTurn>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof generateEmployeeTurn>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["generateEmployeeTurn"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof generateEmployeeTurn>>,
+    void
+  > = () => {
+    return generateEmployeeTurn(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type GenerateEmployeeTurnMutationResult = NonNullable<
+  Awaited<ReturnType<typeof generateEmployeeTurn>>
+>;
+
+export type GenerateEmployeeTurnMutationError = ErrorType<
+  ErrorResponse | UnauthorizedResponse
+>;
+
+/**
+ * @summary Generate the next employee turn
+ */
+export const useGenerateEmployeeTurn = <
+  TError = ErrorType<ErrorResponse | UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof generateEmployeeTurn>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof generateEmployeeTurn>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getGenerateEmployeeTurnMutationOptions(options));
 };
 
 /**

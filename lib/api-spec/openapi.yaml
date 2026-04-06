@@ -228,6 +228,32 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /employee-turn:
+    post:
+      operationId: generateEmployeeTurn
+      tags: [coaching]
+      summary: Generate the next employee turn
+      description: |
+        Uses GPT-4o-mini with the persona's system prompt and the full conversation
+        history to generate the employee's next utterance. The result is stored in
+        the server-side session as an employee turn. Call once before each manager
+        recording round (including the very first turn).
+      responses:
+        "200":
+          description: Employee turn transcript and turn index
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeeTurnResponse"
+        "400":
+          description: Session not configured or session already complete
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /improved-replay:
     post:
       operationId: generateImprovedReplay
@@ -326,6 +352,16 @@ components:
               - error
 
   schemas:
+    ErrorResponse:
+      type: object
+      description: Generic error response body
+      properties:
+        error:
+          type: string
+          description: Human-readable error message
+      required:
+        - error
+
     HealthStatus:
       type: object
       properties:
@@ -499,6 +535,22 @@ components:
         - transcript
         - coachingTip
         - emotionScore
+
+    EmployeeTurnResponse:
+      type: object
+      description: The employee's generated turn text and its position in the session
+      properties:
+        transcript:
+          type: string
+          description: The employee's generated utterance for this turn
+        turnIndex:
+          type: integer
+          minimum: 1
+          maximum: 5
+          description: The manager turn number this employee turn precedes (1-5)
+      required:
+        - transcript
+        - turnIndex
 
     ImprovedTurn:
       type: object

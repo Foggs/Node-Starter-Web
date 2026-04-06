@@ -12,6 +12,8 @@ export * from "./coachingTipRequest";
 export * from "./coachingTipResponse";
 export * from "./consentRequest";
 export * from "./consentResponse";
+export * from "./employeeTurnResponse";
+export * from "./errorResponse";
 export * from "./feedbackSummary";
 export * from "./healthStatus";
 export * from "./improvedTurn";

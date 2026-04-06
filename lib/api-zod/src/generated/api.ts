@@ -232,6 +232,31 @@ export const GetCoachingTipResponse = zod.object({
 });
 
 /**
+ * Uses GPT-4o-mini with the persona's system prompt and the full conversation
+history to generate the employee's next utterance. The result is stored in
+the server-side session as an employee turn. Call once before each manager
+recording round (including the very first turn).
+
+ * @summary Generate the next employee turn
+ */
+export const generateEmployeeTurnResponseTurnIndexMax = 5;
+
+export const GenerateEmployeeTurnResponse = zod
+  .object({
+    transcript: zod
+      .string()
+      .describe("The employee's generated utterance for this turn"),
+    turnIndex: zod
+      .number()
+      .min(1)
+      .max(generateEmployeeTurnResponseTurnIndexMax)
+      .describe("The manager turn number this employee turn precedes (1-5)"),
+  })
+  .describe(
+    "The employee's generated turn text and its position in the session",
+  );
+
+/**
  * Rewrites all manager turns using GPT-4o-mini, then generates TTS audio
 for each rewritten turn in the manager's cloned voice.
 Progressive generation begins after turn 1 to hide end-of-session latency.
