@@ -1,0 +1,456 @@
+EXIT COACH
+
+Software Design Document
+
+Version 2.0 | April 2026
+
+Practice difficult conversations with confidence.
+
+Status
+
+Ready for Implementation
+
+Version
+
+2.0 (MVP + Architecture Hardening)
+
+Owner
+
+Engineering Lead
+
+Classification
+
+CONFIDENTIAL
+
+1. Project Overview
+Exit Coach is a secure, voice-first rehearsal platform that helps managers practice high-stakes conversations — terminations, layoffs, PIPs, and misconduct discussions — in a realistic, emotionally safe environment. Managers clone their voice once, practice in a turn-based format against an emotionally realistic AI employee persona, receive immediate coaching feedback, and can hear an improved version of the conversation played back in their own cloned voice.
+
+1.1 Problem Statement
+Most managers receive no structured practice before delivering some of the most consequential conversations of an employee's career. The resulting anxiety leads to poor delivery, legal risk, and lasting damage to both parties. Exit Coach solves this through deliberate, private, repeatable practice.
+
+1.2 Key Differentiators
+Real voice cloning — managers hear their own improved voice, not a generic TTS voice
+Turn-based practice with immediate, actionable coaching tips after every manager turn
+Emotionally realistic employee personas powered by ElevenLabs Agent
+Positive reinforcement framing — feedback highlights strengths before improvements
+Shareable coaching report — anonymized PDF exportable for HR review or self-development
+Secure by design — all API keys server-side, voice data session-scoped only
+2. Objectives
+2.1 User Goals
+Reduce anxiety and build confidence before delivering difficult news
+Experience realistic emotional pushback in a consequence-free environment
+Receive immediate, actionable coaching feedback after every turn
+Hear themselves sound calmer, clearer, and more legally precise
+Walk away with a tangible coaching artifact they can share or revisit
+2.2 Business Goals
+Establish Exit Coach as the definitive tool for manager communication practice
+Create a distribution mechanism via shareable PDF coaching reports
+Build toward a teams/enterprise licensing model through HR adoption
+3. Target Users
+User Type
+
+Primary Use Case
+
+Mid-level managers
+
+Practice termination and PIP conversations before delivery
+
+New people leaders
+
+Build confidence in their first high-stakes HR conversations
+
+HR Business Partners
+
+Prepare managers on their team; review coaching reports
+
+Legal / Compliance teams
+
+Verify managers use legally safe language in practice
+
+Executive coaches
+
+Supplement coaching engagements with structured practice reps
+
+4. Core Features (MVP v2.0)
+4.1 Onboarding & Voice Cloning
+User records 30–60 seconds of natural speech
+Backend securely calls ElevenLabs Instant Voice Cloning API and returns a voice_id
+Explicit biometric data consent screen presented and logged before recording begins
+voice_id stored in server-side session only — never persisted to a database in MVP
+Critical Fix Applied
+
+Fallback path: If voice cloning fails, user may proceed with a generic voice and retry cloning at any point before the Improved Replay step.
+Consent gate: Explicit biometric consent (BIPA / GDPR compliant) captured and timestamped before any audio is sent to ElevenLabs.
+4.2 Session Setup
+Scenario Selector
+Performance Issue — addressing repeated performance failures
+Layoff / Restructuring — position elimination, no fault of employee
+Misconduct — behavioral or policy violation
+PIP Failure — end of a performance improvement plan
+Persona Selector
+Persona
+
+Emotional Style
+
+Tearful / Emotional
+
+Distressed, crying, seeking reassurance
+
+Defensive / Argumentative
+
+Challenges decisions, demands explanations
+
+Quiet / Withdrawn
+
+Minimal responses, long silences, disengaged
+
+Professional but Disappointed
+
+Composed but visibly hurt and processing
+
+Angry / Confrontational
+
+Raises voice, threatens escalation or legal action
+
+4.3 Practice Session (Turn-based)
+Maximum of 5 turns per session
+ElevenLabs Agent speaks first using scenario + persona dynamic variables
+Manager records response via microphone
+Audio transcribed via OpenAI Whisper (replaces Web Speech API — see Technical section)
+After each manager turn: 1–2 sentence coaching tip displayed immediately
+At turn 5: final turn clearly flagged as the closing turn; session auto-concludes after manager's response
+Session Recovery
+
+Checkpoint saves: Turn transcripts and coaching tips are saved to sessionStorage after each completed turn, allowing the session to resume if the tab is inadvertently refreshed.
+Agent timeout: If the ElevenLabs Agent fails to respond within 8 seconds, a friendly error state is shown with a Retry option. After 3 retries, the session falls back to a text-based employee response.
+4.4 Post-Session Feedback
+The FeedbackPanel is redesigned to lead with positive reinforcement before surfacing improvements — a critical change from v1 which positioned all coaching as corrective.
+
+What You Did Well — 1–2 specific strengths identified from the transcript
+Coaching Tips Summary — recap of per-turn tips
+Areas for Improvement — targeted suggestions with example language
+Overall Performance Assessment — brief qualitative summary
+Emotion Arc Chart — line chart showing employee emotional intensity (1–10) per turn
+Force Multiplier: Emotion Arc Visualization
+
+How it works: GPT-4o-mini rates each employee response for emotional intensity (1–10) in the same API call that generates coaching tips. Zero additional cost.
+Why it matters: Users can see whether their approach de-escalated or inflamed the conversation — a visual story they remember and share.
+4.5 Improved Replay
+LLM rewrites only the manager's turns to be clearer, more empathetic, and legally precise
+Progressive generation begins at turn 1 during the live session to minimize wait time at session end
+Full audio generated using the manager's cloned voice via ElevenLabs TTS
+Loading state includes per-turn progress indicator (Turn 1 of 5 ready...)
+Playable in browser with a side-by-side transcript (original vs. improved)
+4.6 Coaching Report (PDF Export)
+A one-page, anonymized PDF report generated server-side after session completion.
+
+Scenario and persona type
+Emotion arc chart (static image)
+Per-turn coaching tips
+Improved manager script
+No voice data, no PII — safe to share with HR partners or coaches
+Force Multiplier: Shareable Coaching Report
+
+Distribution flywheel: HR leaders who receive these reports become product advocates and natural enterprise buyers.
+Minimal effort: The data is already generated. PDF generation requires only a server-side render step using existing session data.
+5. Technical Architecture
+5.1 Stack Overview
+Layer
+
+Technology
+
+Frontend
+
+React (Vite) + Tailwind CSS
+
+Backend
+
+Express.js with per-session rate limiting
+
+Transcription
+
+OpenAI Whisper API (replaces Web Speech API)
+
+Voice AI — Employee
+
+ElevenLabs Agent (env-var configured, not hardcoded)
+
+Voice AI — Cloning & TTS
+
+ElevenLabs Instant Voice Cloning + TTS
+
+LLM
+
+OpenAI GPT-4o-mini (coaching tips, script rewrite, emotion scoring)
+
+Session State
+
+Express server-side session (express-session + memorystore)
+
+Hosting
+
+Replit (with keep-alive ping to prevent cold starts)
+
+PDF Generation
+
+Server-side (puppeteer or pdfkit)
+
+5.2 Frontend Components
+ConsentGate — biometric data consent capture before voice cloning
+VoiceCloner — recording interface with fallback-to-generic-voice path
+ScenarioSelector — scenario cards with descriptions
+PersonaSelector — persona cards with emotional style summaries
+ConversationInterface — turn-based session UI with coaching tip overlay
+SessionRecoveryBanner — displays when a saved checkpoint is detected
+FeedbackPanel — strengths-first feedback with emotion arc chart
+ImprovedReplay — side-by-side transcript player with progressive audio
+5.3 Backend Endpoints
+Endpoint
+
+Description
+
+POST /api/consent
+
+Log timestamped biometric consent before cloning
+
+POST /api/clone-voice
+
+Secure voice clone — returns voice_id to session
+
+POST /api/coaching-tip
+
+Per-turn: transcribe + generate tip + emotion score
+
+POST /api/improved-replay
+
+Rewrite manager turns + generate TTS audio progressively
+
+POST /api/export-report
+
+Generate anonymized PDF coaching report
+
+All endpoints protected by:
+
+Session authentication check (no session = 401)
+Per-session rate limiting (10 req/min on voice endpoints, 30 req/min on LLM endpoints)
+Input sanitization on all transcribed text before LLM submission
+5.4 Data Flow
+User views and accepts biometric consent screen → POST /api/consent logs timestamp
+User records 30–60s audio → POST /api/clone-voice → ElevenLabs API → voice_id stored in server-side session
+User selects scenario + persona → session context stored
+ElevenLabs Agent speaks first (agent ID from environment variable, scenario + persona injected as dynamic variables)
+Manager records → POST /api/coaching-tip → Whisper transcribes → GPT-4o-mini generates tip + emotion score → returned to client
+Steps 4–5 repeat for up to 5 turns; improved replay generation begins progressively after turn 1
+After turn 5 → POST /api/export-report → PDF generated and served → FeedbackPanel + ImprovedReplay rendered
+6. Security & Compliance
+6.1 Authentication & Session Management
+All backend endpoints require an active server-side session (no anonymous API access)
+Session tokens are HttpOnly, Secure, and SameSite=Strict cookies
+Session expires after 2 hours of inactivity or on browser close
+For MVP: lightweight anonymous session creation on first page load — no account required, but session-scoped access controls are enforced
+6.2 Voice Biometric Data (BIPA / GDPR)
+Compliance Requirements
+
+Explicit consent: Users must accept a biometric data consent screen before any audio is recorded. Consent is timestamped and stored separately from session data.
+Data minimization: Raw audio recordings are never persisted. Only the ElevenLabs voice_id (an opaque identifier) is retained, and only for the session duration.
+Deletion on session end: The ElevenLabs voice clone is deleted via API when the session expires or when the user explicitly ends the session.
+Data Processing Addendum: A DPA with ElevenLabs must be executed before any production launch serving EU or Illinois/Texas/Washington users.
+Privacy policy: A clear, plain-language privacy policy describing voice data handling must be accessible before consent is captured.
+6.3 API Key Security
+ELEVENLABS_API_KEY and OPENAI_API_KEY stored only as environment variables on the backend
+No API keys exposed to the frontend under any circumstances
+Keys rotated at least every 90 days or immediately upon any suspected exposure
+6.4 Input Sanitization
+All transcribed text is stripped of prompt-injection patterns before being passed to the LLM
+A system-prompt boundary is enforced in all LLM calls so user content cannot override system instructions
+Maximum transcript length enforced per turn (2,000 characters) to prevent abuse
+7. User Flow
+Step
+
+Screen / State
+
+1
+
+Landing page → Accept biometric consent → Begin voice cloning
+
+2
+
+Record 30–60s audio → Cloning success (or: skip to generic voice)
+
+3
+
+Scenario selection (4 options with descriptions)
+
+4
+
+Persona selection (5 emotional styles)
+
+5
+
+Practice session — up to 5 turns with per-turn coaching tips
+
+6
+
+Turn 5 flagged as final closing turn — session auto-concludes
+
+7
+
+FeedbackPanel — strengths, tips, emotion arc chart
+
+8
+
+Improved Replay — side-by-side transcript + audio in cloned voice
+
+9
+
+Download PDF coaching report (optional)
+
+8. Non-Functional Requirements
+Requirement
+
+Specification
+
+Privacy
+
+Voice data session-scoped only; ElevenLabs clone deleted on session expiry
+
+Consent
+
+Biometric consent captured, timestamped, and logged before any voice recording
+
+Performance
+
+Coaching tip returned within 3s of turn completion; progressive replay generation hides end-of-session latency
+
+Availability
+
+Keep-alive ping prevents Replit cold starts during active sessions
+
+Security
+
+All API keys server-side; session auth on all endpoints; rate limiting enforced
+
+Accessibility
+
+Basic keyboard navigation and screen reader support (Phase 2: full WCAG 2.1 AA)
+
+Design
+
+Clean, professional, calm aesthetic — blues, grays, ample whitespace
+
+Browser Support
+
+Chrome (primary), Edge, Safari 16+; Firefox supported via Whisper transcription
+
+9. Data Schema Stub (Phase 2 Ready)
+No database is implemented in MVP. However, the following schema stub is defined now to prevent painful migrations when Phase 2 introduces saved sessions and analytics.
+
+sessions
+Column
+
+Type / Notes
+
+id
+
+UUID, primary key
+
+scenario
+
+ENUM (performance_issue, layoff, misconduct, pip_failure)
+
+persona
+
+ENUM (tearful, defensive, withdrawn, professional, angry)
+
+turn_count
+
+INTEGER (1–5)
+
+voice_cloned
+
+BOOLEAN
+
+completed
+
+BOOLEAN
+
+created_at
+
+TIMESTAMP
+
+turns
+Column
+
+Type / Notes
+
+id
+
+UUID, primary key
+
+session_id
+
+UUID, foreign key → sessions.id
+
+turn_index
+
+INTEGER (1–5)
+
+role
+
+ENUM (employee, manager)
+
+transcript
+
+TEXT
+
+coaching_tip
+
+TEXT, nullable (manager turns only)
+
+emotion_score
+
+INTEGER 1–10, nullable (employee turns only)
+
+created_at
+
+TIMESTAMP
+
+10. Future Enhancements (Phase 2+)
+Persistent user accounts with saved session history
+Advanced tone, empathy, and legal risk scoring with visual dashboards
+Multiple saved voice clones per user
+Team / enterprise licensing with HR admin dashboard
+Real-time streaming conversation mode (replace turn-based)
+Mobile PWA support
+Full WCAG 2.1 AA accessibility compliance
+Multi-language support
+11. Open Items & Decisions Required
+Item
+
+Owner
+
+Execute Data Processing Addendum with ElevenLabs before production launch
+
+Legal / Founder
+
+Confirm Replit tier supports keep-alive and environment variable encryption
+
+Engineering
+
+Finalize privacy policy language for biometric consent screen
+
+Legal / Founder
+
+Confirm ElevenLabs Agent ID environment variable naming convention
+
+Engineering
+
+Define session expiry duration (default proposed: 2 hours)
+
+Product
+
+Confirm PDF export tool selection: puppeteer vs. pdfkit
+
+Engineering
+
+Exit Coach SDD v2.0 | April 2026 | CONFIDENTIAL
