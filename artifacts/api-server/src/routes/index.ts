@@ -4,6 +4,11 @@ import pingRouter from "./ping.js";
 import scenariosRouter from "./scenarios.js";
 import personasRouter from "./personas.js";
 import sessionRouter from "./session.js";
+import consentRouter from "./consent.js";
+import voiceRouter from "./voice.js";
+import coachingRouter from "./coaching.js";
+import reportRouter from "./report.js";
+import audioRouter from "./audio.js";
 
 const router: IRouter = Router();
 
@@ -15,5 +20,10 @@ router.use(personasRouter);
 
 // Session-guarded (guard applied per-route inside each router)
 router.use(sessionRouter);
+router.use(consentRouter);
+router.use(voiceRouter);
+router.use(coachingRouter);
+router.use(reportRouter);
+router.use(audioRouter);
 
 export default router;
