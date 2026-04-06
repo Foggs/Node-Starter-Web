@@ -34,7 +34,7 @@ Active skills for this project:
 - [x] **11. Implement live route handlers** — `scenarios.ts`, `personas.ts`, `session.ts` (GET + PATCH), `ping.ts`
 - [x] **12. Create stub route handlers** — `consent.ts`, `voice.ts`, `coaching.ts`, `report.ts`, `audio.ts` → all return `501`
 - [x] **13. Register all routes** — `artifacts/api-server/src/routes/index.ts`: mount all routers; apply `sessionGuard` to protected routes
-- [ ] **14. Define Phase 2 DB schema stub** — `lib/db/src/schema/sessions.ts` + `turns.ts`: Drizzle table definitions, NOT used in MVP
+- [x] **14. Define Phase 2 DB schema stub** — `lib/db/src/schema/sessions.ts` + `turns.ts`: Drizzle table definitions, NOT used in MVP
 - [ ] **15. Build frontend shell** — `artifacts/web-app/src/App.tsx` with wouter routes; pages: `landing`, `consent`, `onboarding`, `setup` (live API data), `session`, `feedback`, `history`
 
 ### Key constraints
