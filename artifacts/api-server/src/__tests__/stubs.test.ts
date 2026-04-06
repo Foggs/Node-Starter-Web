@@ -51,11 +51,7 @@ function sharedStubAssertions(
 
 // ─── POST /consent ── implemented in Task #5 Step 1; tested in consent.test.ts ─
 
-// ─── POST /clone-voice ────────────────────────────────────────────────────────
-
-describe("POST /api/clone-voice (stub)", () => {
-  sharedStubAssertions("post", "/clone-voice");
-});
+// ─── POST /clone-voice ── implemented in Task #5 Step 3; tested in cloneVoice.test.ts ─
 
 // ─── GET /voice/preview ───────────────────────────────────────────────────────
 
