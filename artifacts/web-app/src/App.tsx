@@ -1,40 +1,24 @@
-function Header() {
-  return (
-    <header className="border-b bg-white px-6 py-4">
-      <div className="max-w-5xl mx-auto">
-        <span className="font-semibold text-gray-900">My App</span>
-      </div>
-    </header>
-  );
-}
-
-function Main() {
-  return (
-    <main className="flex-1 px-6 py-16">
-      <div className="max-w-5xl mx-auto">
-        <h1 className="text-3xl font-bold text-gray-900">Welcome</h1>
-        <p className="mt-3 text-gray-500">Your app starts here. Edit this page to get started.</p>
-      </div>
-    </main>
-  );
-}
-
-function Footer() {
-  return (
-    <footer className="border-t bg-white px-6 py-4">
-      <div className="max-w-5xl mx-auto text-sm text-gray-400">
-        &copy; {new Date().getFullYear()} My App
-      </div>
-    </footer>
-  );
-}
+import { Switch, Route } from "wouter";
+import Landing from "./pages/landing";
+import Consent from "./pages/consent";
+import Onboarding from "./pages/onboarding";
+import Setup from "./pages/setup";
+import Session from "./pages/session";
+import Feedback from "./pages/feedback";
+import History from "./pages/history";
+import NotFound from "./pages/not-found";
 
 export default function App() {
   return (
-    <div className="min-h-screen flex flex-col bg-gray-50">
-      <Header />
-      <Main />
-      <Footer />
-    </div>
+    <Switch>
+      <Route path="/" component={Landing} />
+      <Route path="/consent" component={Consent} />
+      <Route path="/onboarding" component={Onboarding} />
+      <Route path="/setup" component={Setup} />
+      <Route path="/session" component={Session} />
+      <Route path="/feedback" component={Feedback} />
+      <Route path="/history" component={History} />
+      <Route component={NotFound} />
+    </Switch>
   );
 }
