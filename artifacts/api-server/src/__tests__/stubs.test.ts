@@ -1,78 +1,43 @@
+/**
+ * All endpoints that were once stubs are now implemented:
+ *   - POST /api/consent         → consent.test.ts
+ *   - POST /api/clone-voice     → cloneVoice.test.ts
+ *   - GET  /api/voice/preview   → voicePreview.test.ts
+ *   - POST /api/coaching-tip    → coaching.test.ts
+ *   - POST /api/employee-turn   → employeeTurn.test.ts
+ *   - POST /api/feedback-summary → feedbackSummary.test.ts
+ *   - POST /api/improved-replay  → improvedReplay.test.ts
+ *   - GET  /api/audio/:turnId   → improvedReplay.test.ts
+ *   - POST /api/export-report   → exportReport.test.ts
+ *
+ * This file now holds lightweight sanity tests covering the session guard
+ * behaviour shared by all protected routes.
+ */
+
 import { describe, it, expect } from "vitest";
 import request from "supertest";
 import app from "../app.js";
 
-/** Mint a session cookie via the public healthz endpoint. */
-async function getSessionCookie(): Promise<string> {
-  const res = await request(app).get("/api/healthz").expect(200);
-  const raw = res.headers["set-cookie"] as string[] | string | undefined;
-  const cookies = Array.isArray(raw) ? raw : [String(raw ?? "")];
-  const sid = cookies.find((c) => c.startsWith("connect.sid="));
-  if (!sid) throw new Error("No connect.sid cookie in response");
-  return sid.split(";")[0]!;
-}
+const PROTECTED_ROUTES: Array<{ method: "get" | "post" | "patch"; path: string }> = [
+  { method: "post", path: "/api/consent" },
+  { method: "post", path: "/api/clone-voice" },
+  { method: "get", path: "/api/voice/preview" },
+  { method: "get", path: "/api/session" },
+  { method: "patch", path: "/api/session" },
+  { method: "post", path: "/api/coaching-tip" },
+  { method: "post", path: "/api/employee-turn" },
+  { method: "post", path: "/api/feedback-summary" },
+  { method: "post", path: "/api/improved-replay" },
+  { method: "get", path: "/api/audio/some-turn-id" },
+  { method: "post", path: "/api/export-report" },
+];
 
-// ─── helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * Assert that an endpoint:
- *  - returns 401 when no session cookie is provided
- *  - returns 501 with a JSON body when a valid session cookie is provided
- */
-function sharedStubAssertions(
-  method: "get" | "post" | "patch" | "delete",
-  path: string,
-) {
-  it(`${method.toUpperCase()} ${path} — returns 401 without a session cookie`, async () => {
-    const res = await (request(app)[method] as (url: string) => request.Test)(
-      `/api${path}`,
-    );
-    expect(res.status).toBe(401);
-    expect(res.body).toHaveProperty("error");
-  });
-
-  it(`${method.toUpperCase()} ${path} — returns 501 Not Implemented with a session cookie`, async () => {
-    const cookie = await getSessionCookie();
-    const res = await (request(app)[method] as (url: string) => request.Test)(
-      `/api${path}`,
-    ).set("Cookie", cookie);
-    expect(res.status).toBe(501);
-    expect(res.body).toHaveProperty("error");
-  });
-
-  it(`${method.toUpperCase()} ${path} — 501 body is JSON, not HTML`, async () => {
-    const cookie = await getSessionCookie();
-    const res = await (request(app)[method] as (url: string) => request.Test)(
-      `/api${path}`,
-    ).set("Cookie", cookie);
-    expect(res.type).toMatch(/json/);
-  });
-}
-
-// ─── POST /consent ── implemented in Task #5 Step 1; tested in consent.test.ts ─
-
-// ─── POST /clone-voice ── implemented in Task #5 Step 3; tested in cloneVoice.test.ts ─
-
-// ─── GET /voice/preview ── implemented in Task #5 Step 4; tested in voicePreview.test.ts ─
-
-// ─── POST /coaching-tip ── implemented in Task #6 Step 6.2; tested in coaching.test.ts ─
-
-// ─── POST /improved-replay ────────────────────────────────────────────────────
-
-describe("POST /api/improved-replay (stub)", () => {
-  sharedStubAssertions("post", "/improved-replay");
-});
-
-// ─── POST /feedback-summary ── implemented in Task #6 Step 6.5; tested in feedbackSummary.test.ts ─
-
-// ─── POST /export-report ─────────────────────────────────────────────────────
-
-describe("POST /api/export-report (stub)", () => {
-  sharedStubAssertions("post", "/export-report");
-});
-
-// ─── GET /audio/:turnId ───────────────────────────────────────────────────────
-
-describe("GET /api/audio/:turnId (stub)", () => {
-  sharedStubAssertions("get", "/audio/turn-1");
+describe("Session guard — all protected routes return 401 without a session cookie", () => {
+  for (const { method, path } of PROTECTED_ROUTES) {
+    it(`${method.toUpperCase()} ${path}`, async () => {
+      const res = await (request(app)[method] as (url: string) => request.Test)(path);
+      expect(res.status).toBe(401);
+      expect(res.body).toHaveProperty("error");
+    });
+  }
 });

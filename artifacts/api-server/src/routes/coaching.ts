@@ -1,12 +1,17 @@
+import crypto from "node:crypto";
 import { Router, type IRouter } from "express";
 import multer from "multer";
 import { sessionGuard } from "../middlewares/sessionGuard.js";
 import { llmRateLimit } from "../middlewares/rateLimits.js";
 import { transcribeAudio, chatCompletion } from "../lib/openai.js";
 import { sanitizeTranscript } from "../lib/sanitize.js";
+import { synthesizeSpeech } from "../lib/elevenlabs.js";
 import { scenarios } from "../data/scenarios.js";
 import { personas } from "../data/personas.js";
 import type { SessionData } from "express-session";
+
+/** Generic ElevenLabs voice used as fallback when voice cloning failed. */
+const GENERIC_VOICE_ID = "pNInz6obpgDQGcFmaJgB"; // Adam
 
 type Turn = SessionData["turns"][number];
 
@@ -273,11 +278,134 @@ router.post("/employee-turn", llmRateLimit, sessionGuard, async (req, res) => {
   res.status(200).json({ transcript, turnIndex });
 });
 
+// ─── improved-replay prompt builder ───────────────────────────────────────────
+
+function buildRewriteSystemPrompt(
+  scenario: (typeof scenarios)[number] | undefined,
+  persona: (typeof personas)[number] | undefined,
+): string {
+  const scenarioBlock = scenario
+    ? `Scenario: ${scenario.name} — ${scenario.description}`
+    : "Scenario: a difficult HR conversation";
+
+  const personaBlock = persona
+    ? `Employee: ${persona.name} (${persona.emotionalStyle})`
+    : "Employee: a distressed team member";
+
+  return [
+    "You are an expert HR communication coach.",
+    "",
+    scenarioBlock,
+    personaBlock,
+    "",
+    "Your task: rewrite the manager's statement to make it more empathetic, clear, and psychologically safe.",
+    "RULES:",
+    "- Preserve the core message and intent — do NOT change what is being communicated.",
+    "- Use plain, warm language. Avoid jargon.",
+    "- Keep the length similar to the original (within ±20%).",
+    "- Do NOT add preamble such as 'Here is a rewritten version…'.",
+    "- Respond ONLY with the rewritten statement — no commentary.",
+  ].join("\n");
+}
+
+function buildRewriteUserPrompt(transcript: string, turnIndex: number): string {
+  return `Manager's turn ${turnIndex}:\n\n"${transcript}"\n\nRewrite:`;
+}
+
 // ─── POST /api/improved-replay ────────────────────────────────────────────────
 
-router.post("/improved-replay", sessionGuard, (_req, res) => {
-  res.status(501).json({ error: "Not implemented — coming in Task #6 Step 6.7" });
-});
+router.post(
+  "/improved-replay",
+  llmRateLimit,
+  sessionGuard,
+  async (req, res) => {
+    const allTurns = req.session.turns ?? [];
+    const managerTurns = allTurns
+      .filter((t) => t.role === "manager")
+      .sort((a, b) => a.turn_index - b.turn_index);
+
+    if (managerTurns.length === 0) {
+      res.status(400).json({
+        error: "No manager turns in session — complete at least one turn first",
+      });
+      return;
+    }
+
+    const scenario = scenarios.find((s) => s.id === req.session.scenario);
+    const persona = personas.find((p) => p.id === req.session.persona);
+    const voiceId = req.session.voice_id ?? GENERIC_VOICE_ID;
+
+    const systemPrompt = buildRewriteSystemPrompt(scenario, persona);
+
+    // Process each manager turn sequentially — yields progressive results
+    const results: Array<{
+      turnIndex: number;
+      originalTranscript: string;
+      improvedTranscript: string;
+      audioUrl: string;
+    }> = [];
+
+    for (const turn of managerTurns) {
+      const rawImproved = await chatCompletion(
+        [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: buildRewriteUserPrompt(turn.transcript, turn.turn_index),
+          },
+        ],
+        { temperature: 0.7, max_tokens: 300 },
+      );
+
+      const improvedTranscript = sanitizeTranscript(rawImproved.trim());
+
+      // TTS audio synthesis — gracefully falls back to generic voice on error
+      let audioBuffer: Buffer | undefined;
+      try {
+        audioBuffer = await synthesizeSpeech(voiceId, improvedTranscript);
+      } catch {
+        try {
+          audioBuffer = await synthesizeSpeech(
+            GENERIC_VOICE_ID,
+            improvedTranscript,
+          );
+        } catch {
+          // If both fail, continue without audio for this turn
+          audioBuffer = undefined;
+        }
+      }
+
+      // Assign a stable UUID to this turn so the audio can be retrieved
+      const turnId = crypto.randomUUID();
+
+      // Store audio as base64 string so it survives session serialization
+      const audioBase64 = audioBuffer
+        ? audioBuffer.toString("base64")
+        : undefined;
+
+      // Mutate the matching turn in session.turns in-place
+      req.session.turns = req.session.turns!.map((t) =>
+        t.role === "manager" && t.turn_index === turn.turn_index
+          ? {
+              ...t,
+              turn_id: turnId,
+              improved_transcript: improvedTranscript,
+              audio_buffer: audioBase64,
+            }
+          : t,
+      );
+
+      results.push({
+        turnIndex: turn.turn_index,
+        originalTranscript: turn.transcript,
+        improvedTranscript,
+        audioUrl: `/api/audio/${turnId}`,
+      });
+    }
+
+    res.status(200).json(results);
+  },
+);
 
 // ─── feedback-summary prompt builders ─────────────────────────────────────────
 
@@ -410,6 +538,9 @@ router.post("/feedback-summary", llmRateLimit, sessionGuard, async (req, res) =>
   const emotionArc = managerTurns
     .sort((a, b) => a.turn_index - b.turn_index)
     .map((t) => t.emotion_score ?? 5);
+
+  // Cache feedback in session so export-report can access it without re-generating
+  req.session.feedback = { strengths, improvements, summary, emotionArc };
 
   res.status(200).json({ strengths, improvements, summary, emotionArc });
 });

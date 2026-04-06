@@ -5,6 +5,7 @@ import Onboarding from "./pages/onboarding";
 import Setup from "./pages/setup";
 import Session from "./pages/session";
 import Feedback from "./pages/feedback";
+import Replay from "./pages/replay";
 import History from "./pages/history";
 import NotFound from "./pages/not-found";
 
@@ -17,6 +18,7 @@ export default function App() {
       <Route path="/setup" component={Setup} />
       <Route path="/session" component={Session} />
       <Route path="/feedback" component={Feedback} />
+      <Route path="/replay" component={Replay} />
       <Route path="/history" component={History} />
       <Route component={NotFound} />
     </Switch>

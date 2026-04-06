@@ -6,6 +6,19 @@ export interface Turn {
   transcript: string;
   coaching_tip?: string;
   emotion_score?: number;
+  /** UUID assigned to manager turns during improved-replay generation. */
+  turn_id?: string;
+  /** GPT-4o-mini rewrite of the manager's transcript. */
+  improved_transcript?: string;
+  /** Base64-encoded TTS audio (audio/mpeg) — NEVER sent to the frontend. */
+  audio_buffer?: string;
+}
+
+export interface CachedFeedback {
+  strengths: string[];
+  improvements: string[];
+  summary: string;
+  emotionArc: number[];
 }
 
 declare module "express-session" {
@@ -19,5 +32,7 @@ declare module "express-session" {
     scenario: string | undefined;
     persona: string | undefined;
     turns: Turn[];
+    /** Cached feedback summary — populated by POST /api/feedback-summary. */
+    feedback?: CachedFeedback;
   }
 }
