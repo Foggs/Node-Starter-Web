@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { ShieldCheck, AlertTriangle, ArrowRight } from "lucide-react";
+import { ShieldCheck, AlertTriangle, ArrowRight, Loader2 } from "lucide-react";
+import { useRecordConsent } from "@workspace/api-client-react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,10 +12,22 @@ export default function Consent() {
   const [checked, setChecked] = useState(false);
   const [, navigate] = useLocation();
 
+  const mutation = useRecordConsent({
+    mutation: {
+      onSuccess: () => {
+        navigate("/onboarding");
+      },
+    },
+  });
+
   function handleContinue() {
-    if (!checked) return;
-    navigate("/onboarding");
+    if (!checked || mutation.isPending) return;
+    mutation.mutate({ data: { consentGiven: true } });
   }
+
+  const apiError = mutation.isError
+    ? "Could not record consent — please check your connection and try again."
+    : null;
 
   return (
     <AppShell>
@@ -77,7 +90,7 @@ export default function Consent() {
           </CardContent>
         </Card>
 
-        <div className="flex items-start gap-3 mb-8 p-4 bg-white border rounded-lg">
+        <div className="flex items-start gap-3 mb-6 p-4 bg-white border rounded-lg">
           <Checkbox
             id="consent"
             checked={checked}
@@ -95,6 +108,14 @@ export default function Consent() {
           </Label>
         </div>
 
+        {/* Inline API error */}
+        {apiError && (
+          <div className="flex gap-2 items-start bg-red-50 border border-red-200 rounded-lg p-3 mb-6 text-sm text-red-700">
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
+            <span>{apiError}</span>
+          </div>
+        )}
+
         <div className="flex items-center justify-between">
           <Link href="/">
             <Button variant="ghost" className="text-slate-500">
@@ -103,10 +124,19 @@ export default function Consent() {
           </Link>
           <Button
             onClick={handleContinue}
-            disabled={!checked}
+            disabled={!checked || mutation.isPending}
             className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold gap-2 disabled:opacity-40"
           >
-            Continue <ArrowRight className="w-4 h-4" />
+            {mutation.isPending ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Saving…
+              </>
+            ) : (
+              <>
+                Continue <ArrowRight className="w-4 h-4" />
+              </>
+            )}
           </Button>
         </div>
       </div>
