@@ -17,7 +17,14 @@ Active skills for this project:
 
 ## Current Sprint — Task #4: Foundation & Infrastructure
 
-### Status: In Progress
+### Status: Verified ✓ (audited 2026-04-07)
+
+#### Audit summary (Task #7)
+Two issues were found and fixed:
+
+1. **`MemoryStore checkPeriod` was set to `TWO_HOURS_MS`** — this meant the `dispose` hook (which calls `deleteVoice`) could fire up to 4 hours after a session expired, violating the 2-hour voice-data SLA. Fixed: lowered `checkPeriod` to `60_000` ms (60 s) so cleanup runs within a minute of expiry.
+
+2. **`sessionGuard` checked cookie presence only** — a client sending a forged or expired `connect.sid` cookie would pass the guard (cookie header exists), and express-session would silently create a new empty session with a different ID. Fixed: the guard now also verifies that the session ID decoded from the cookie matches `req.sessionID`; a mismatch (forged/expired cookie) returns 401. A new test (`returns 401 when a forged connect.sid cookie is sent`) covers this case. All 315 existing tests continue to pass.
 
 ### Checklist
 

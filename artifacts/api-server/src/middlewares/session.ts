@@ -47,7 +47,11 @@ export function onSessionDispose(sid: string, serialized: string): void {
 const MemoryStore = connectMemoryStore(session);
 
 const store = new MemoryStore({
-  checkPeriod: TWO_HOURS_MS,
+  // Scan for expired sessions every 60 s so the dispose hook (which calls
+  // deleteVoice) fires promptly — well within the 2-hour voice-data SLA.
+  // Using TWO_HOURS_MS here would allow stale sessions to linger in memory
+  // for up to 4 hours (TTL + scan lag) before cleanup runs.
+  checkPeriod: 60_000,
   // Fires on explicit destroy(), TTL expiry, and LRU eviction
   dispose(sid: string, serialized: string) {
     onSessionDispose(sid, serialized);
