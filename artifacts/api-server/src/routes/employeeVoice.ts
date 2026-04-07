@@ -63,11 +63,16 @@ router.post(
     const turns = req.session.turns ?? [];
 
     // Find the latest employee turn that has not yet been synthesized.
-    // Using findLastIndex to get the exact array position so the writeback
-    // targets precisely one turn even when multiple pending turns exist.
-    const pendingIndex = turns.findLastIndex(
-      (t) => t.role === "employee" && !t.audio_buffer,
-    );
+    // Manual reverse loop for ES2022 compatibility (findLastIndex is ES2023).
+    // Gets the exact array position so the writeback targets precisely one turn.
+    let pendingIndex = -1;
+    for (let i = turns.length - 1; i >= 0; i--) {
+      const t = turns[i]!;
+      if (t.role === "employee" && !t.audio_buffer) {
+        pendingIndex = i;
+        break;
+      }
+    }
 
     if (pendingIndex === -1) {
       res.status(400).json({
