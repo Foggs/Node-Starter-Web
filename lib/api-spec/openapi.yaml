@@ -280,6 +280,12 @@ paths:
                 $ref: "#/components/schemas/ErrorResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "502":
+          description: ElevenLabs voice service unavailable — degrade to text-only
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /improved-replay:
     post:
