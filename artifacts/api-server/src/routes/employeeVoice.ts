@@ -62,17 +62,21 @@ router.post(
   async (req, res) => {
     const turns = req.session.turns ?? [];
 
-    // Find the latest employee turn that has not yet been synthesized
-    const pendingTurn = [...turns]
-      .reverse()
-      .find((t) => t.role === "employee" && !t.audio_buffer);
+    // Find the latest employee turn that has not yet been synthesized.
+    // Using findLastIndex to get the exact array position so the writeback
+    // targets precisely one turn even when multiple pending turns exist.
+    const pendingIndex = turns.findLastIndex(
+      (t) => t.role === "employee" && !t.audio_buffer,
+    );
 
-    if (!pendingTurn) {
+    if (pendingIndex === -1) {
       res.status(400).json({
         error: "No pending employee turn to synthesize",
       });
       return;
     }
+
+    const pendingTurn = turns[pendingIndex]!;
 
     // Select voice config: env override > persona map > default
     const personaId = req.session.persona ?? "";
@@ -99,13 +103,13 @@ router.post(
       throw err;
     }
 
-    // Assign a stable turn ID and store audio as base64 in session
+    // Assign a stable turn ID and store audio as base64 in session.
+    // Update exactly the turn at pendingIndex — no ambiguity even with
+    // duplicate unsynthesized turns sharing the same turn_index.
     const turnId = crypto.randomUUID();
 
-    req.session.turns = req.session.turns!.map((t) =>
-      t.role === "employee" &&
-      t.turn_index === pendingTurn.turn_index &&
-      !t.audio_buffer
+    req.session.turns = req.session.turns!.map((t, i) =>
+      i === pendingIndex
         ? { ...t, turn_id: turnId, audio_buffer: audioBuffer.toString("base64") }
         : t,
     );

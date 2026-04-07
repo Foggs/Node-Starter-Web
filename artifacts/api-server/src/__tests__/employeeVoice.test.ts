@@ -254,6 +254,31 @@ describe("POST /api/employee-voice", () => {
       const [, text] = vi.mocked(synthesizeSpeech).mock.calls[0]!;
       expect(text).toBe(transcript);
     });
+
+    it("only updates the latest pending employee turn when multiple exist", async () => {
+      const cookie = await mintSession();
+      await configureSession(cookie);
+
+      // Drive two employee turns — both will be pending (no audio_buffer yet)
+      vi.mocked(chatCompletion).mockResolvedValueOnce("First turn response");
+      await request(app).post("/api/employee-turn").set("Cookie", cookie).expect(200);
+
+      vi.mocked(chatCompletion).mockResolvedValueOnce("Second turn response");
+      await request(app).post("/api/employee-turn").set("Cookie", cookie).expect(200);
+
+      vi.mocked(synthesizeSpeech).mockResolvedValueOnce(FAKE_AUDIO);
+
+      const res = await request(app)
+        .post("/api/employee-voice")
+        .set("Cookie", cookie)
+        .expect(200);
+
+      // The audio should correspond to the LATEST (second) turn
+      const [, text] = vi.mocked(synthesizeSpeech).mock.calls[0]!;
+      expect(text).toBe("Second turn response");
+      expect(synthesizeSpeech).toHaveBeenCalledTimes(1);
+      expect(res.body.audioUrl).toMatch(/^\/api\/audio\//);
+    });
   });
 
   // ─── 502 — ElevenLabs failure ────────────────────────────────────────────
