@@ -248,3 +248,126 @@ Implements the full practice session (Whisper transcription, GPT-4o-mini coachin
 - Mobile PWA support
 - Full WCAG 2.1 AA accessibility compliance
 - Multi-language support
+
+# Feature Spec: Scenario Sub-Types
+**Feature:** Infraction Sub-Type Selection  
+**Status:** Approved for MVP  
+**Fits into:** Session Setup (between Scenario Selector and Persona Selector)  
+**Effort:** Low — single UI addition, prompt engineering change  
+
+---
+
+## Problem
+
+Generic scenario labels ("Misconduct", "Performance Issue") do not give the ElevenLabs Agent enough context to generate a believable, specific emotional reaction. A manager practicing a tardiness termination needs completely different language — and will face a completely different employee response — than one practicing a harassment termination. Without specificity, the AI persona performs a generic reaction that may not match what the manager will actually face in the room.
+
+---
+
+## Solution
+
+Add one level of specificity below each scenario: **2–3 sub-types per scenario**, selectable via radio buttons or a sub-card group on the existing Scenario Selector screen. No additional screen required. The selected sub-type is injected into the ElevenLabs Agent dynamic variables alongside the scenario and persona.
+
+---
+
+## Sub-Type Definitions
+
+### Performance Issue
+| Sub-Type | Employee Reaction Profile |
+|---|---|
+| Missing targets | Defensive about external factors — blames team, tools, unrealistic goals |
+| Poor quality work | Shocked and embarrassed — may not have realized the severity |
+| Attitude & culture fit | Combative — feels targeted, may allege bias or unfair treatment |
+
+### Misconduct
+| Sub-Type | Employee Reaction Profile |
+|---|---|
+| Tardiness & attendance | Minimizing — "it was only a few times", brings up personal circumstances |
+| Policy violation | Depends on severity — ranges from apologetic to aggressive denial |
+| Harassment or conduct | High-stakes — likely to threaten legal action, deny everything, demand evidence |
+
+### Layoff / Restructuring
+| Sub-Type | Employee Reaction Profile |
+|---|---|
+| Position eliminated | Sad and practical — asks about severance, references, timeline |
+| Department restructure | Bargaining — asks if there's another role, why them and not others |
+| Company-wide reduction | More accepting but still emotional — asks about the business future |
+
+### PIP Failure
+| Sub-Type | Employee Reaction Profile |
+|---|---|
+| Goals not met | Argues the goals were unfair or the support wasn't there |
+| Partial improvement | Frustrated — "I was getting better, why isn't that enough?" |
+| No engagement with PIP | Knows it's coming, may be resigned or may have a counter-narrative ready |
+
+---
+
+## UI Behaviour
+
+- Sub-types appear **inline on the Scenario Selector screen** as radio buttons beneath the selected scenario card — no additional screen or navigation step
+- Sub-types are only revealed after a scenario is selected (progressive disclosure)
+- A sub-type selection is **required** before the user can proceed to Persona Selector
+- Default: no sub-type pre-selected, forcing a conscious choice
+
+---
+
+## Agent Prompt Impact
+
+The sub-type value is injected as a dynamic variable into the ElevenLabs Agent system prompt alongside `{{scenario}}` and `{{persona}}`:
+
+```
+{{scenario}}     → "misconduct"
+{{sub_type}}     → "harassment_or_conduct"  
+{{persona}}      → "angry_confrontational"
+```
+
+The agent prompt should instruct the employee persona to:
+1. React in a way consistent with the specific infraction
+2. Use language and emotional intensity appropriate to the sub-type
+3. Maintain consistency — if the sub-type is harassment, the employee should reference the specific allegation in follow-up turns, not drift to generic termination reactions
+
+---
+
+## Coaching Tip Impact
+
+The GPT-4o-mini coaching prompt should also receive the `sub_type` value so it can flag language that is:
+- **Too vague** for the specific infraction (e.g., saying "performance concerns" in a harassment case creates legal ambiguity)
+- **Legally risky** given the sub-type (harassment terminations have a higher bar for precise language)
+- **Tonally mismatched** (being overly casual in a conduct case, or overly stern in a structural layoff)
+
+---
+
+## Session State
+
+Add `sub_type` to the session context object alongside `scenario` and `persona`:
+
+```javascript
+// Session context shape
+{
+  voiceId: "xi_...",
+  scenario: "misconduct",
+  sub_type: "harassment_or_conduct",
+  persona: "angry_confrontational",
+  turns: []
+}
+```
+
+When generating the PDF coaching report, the sub-type should appear in the session summary header so the report is meaningful out of context (e.g., when shared with an HR partner).
+
+---
+
+## Out of Scope (MVP)
+
+- Free-text infraction description — adds LLM complexity and unpredictable persona behavior
+- Manager-provided employee name or tenure — Phase 2
+- Sub-type-specific legal disclaimers — Phase 2
+
+---
+
+## Acceptance Criteria
+
+- [ ] Sub-type options appear inline after scenario selection with no additional navigation step
+- [ ] Proceeding without a sub-type selection is blocked (required field)
+- [ ] `sub_type` is passed as a dynamic variable to the ElevenLabs Agent on session start
+- [ ] `sub_type` is included in the GPT-4o-mini coaching prompt on each turn
+- [ ] `sub_type` appears in the session summary header of the PDF coaching report
+- [ ] Each sub-type produces a noticeably different opening employee response (manual QA across all 12 combinations)
