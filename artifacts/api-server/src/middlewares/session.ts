@@ -6,6 +6,14 @@ import { logger } from "../lib/logger.js";
 
 const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
 
+/**
+ * How often the MemoryStore scans for expired sessions.
+ * Exported so it can be verified in tests — must be well under TWO_HOURS_MS
+ * to ensure the dispose hook (which calls deleteVoice) fires within the
+ * 2-hour voice-data SLA.
+ */
+export const STORE_CHECK_PERIOD_MS = 60_000;
+
 // ─── voice cleanup on session disposal ───────────────────────────────────────
 
 /**
@@ -51,7 +59,7 @@ const store = new MemoryStore({
   // deleteVoice) fires promptly — well within the 2-hour voice-data SLA.
   // Using TWO_HOURS_MS here would allow stale sessions to linger in memory
   // for up to 4 hours (TTL + scan lag) before cleanup runs.
-  checkPeriod: 60_000,
+  checkPeriod: STORE_CHECK_PERIOD_MS,
   // Fires on explicit destroy(), TTL expiry, and LRU eviction
   dispose(sid: string, serialized: string) {
     onSessionDispose(sid, serialized);

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import express from "express";
 import request from "supertest";
 
-import { sessionMiddleware } from "../session.js";
+import { sessionMiddleware, STORE_CHECK_PERIOD_MS } from "../session.js";
 
 function buildTestApp() {
   const app = express();
@@ -90,5 +90,14 @@ describe("sessionMiddleware", () => {
     const res = await agent.get("/get").expect(200);
     expect(res.body.consentGiven).toBe(true);
     expect(res.body.scenario).toBe("layoff");
+  });
+
+  it("store checkPeriod is well under the 2-hour session TTL to ensure timely voice cleanup", () => {
+    const TWO_HOURS_MS = 2 * 60 * 60 * 1000;
+    // STORE_CHECK_PERIOD_MS must be significantly less than the 2-hour TTL so
+    // that the dispose hook (which calls deleteVoice) fires promptly after
+    // a session expires — not up to 4 hours later.
+    expect(STORE_CHECK_PERIOD_MS).toBe(60_000);
+    expect(STORE_CHECK_PERIOD_MS).toBeLessThan(TWO_HOURS_MS / 10);
   });
 });
