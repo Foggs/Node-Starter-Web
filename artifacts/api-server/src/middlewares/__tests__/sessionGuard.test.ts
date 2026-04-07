@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import express from "express";
 import request from "supertest";
+import expressSession from "express-session";
 
 import { sessionMiddleware } from "../session.js";
 import { sessionGuard } from "../sessionGuard.js";
@@ -67,6 +68,41 @@ describe("sessionGuard", () => {
       .set("Cookie", forgedCookie)
       .expect(401);
 
+    expect(res.body).toEqual({ error: "No active session" });
+  });
+
+  it("returns 401 when session exists in store but consent_given is undefined (session not initialised by middleware)", async () => {
+    // This test verifies the consent_given guard: a session that is legitimately
+    // in the store (valid cookie, ID matches) but was created without going
+    // through `sessionMiddleware` (and thus without `initDefaults`) will have
+    // consent_given === undefined and must be rejected.
+    const app = express();
+
+    // Bare express-session with NO initDefaults — consent_given is never set
+    app.use(
+      expressSession({
+        secret: "test-secret",
+        resave: false,
+        saveUninitialized: true,
+      }),
+    );
+
+    // /setup establishes a real session (valid cookie returned to client)
+    app.get("/setup", (_req, res) => {
+      res.json({ ok: true });
+    });
+
+    // /protected is guarded — consent_given will be undefined in this session
+    app.get("/protected", sessionGuard, (_req, res) => {
+      res.json({ secret: "data" });
+    });
+
+    const agent = request.agent(app);
+    // Establish a real, store-backed session (consent_given stays undefined)
+    await agent.get("/setup").expect(200);
+
+    // Guard must reject because consent_given === undefined
+    const res = await agent.get("/protected").expect(401);
     expect(res.body).toEqual({ error: "No active session" });
   });
 });
