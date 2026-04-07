@@ -257,6 +257,25 @@ export const GenerateEmployeeTurnResponse = zod
   );
 
 /**
+ * Synthesizes the most recent pending employee turn as TTS audio using the
+persona-matched built-in ElevenLabs voice. The audio buffer is stored in
+the server-side session and an audio URL is returned. Call immediately
+after POST /api/employee-turn resolves. Degrades gracefully on failure —
+callers should fall back to text-only mode on 502.
+
+ * @summary Synthesize the employee's latest turn as audio
+ */
+export const SynthesizeEmployeeVoiceResponse = zod
+  .object({
+    audioUrl: zod
+      .string()
+      .describe(
+        "Relative URL to the generated TTS audio file for the employee turn",
+      ),
+  })
+  .describe("Audio URL for the synthesized employee turn");
+
+/**
  * Rewrites all manager turns using GPT-4o-mini, then generates TTS audio
 for each rewritten turn in the manager's cloned voice.
 Progressive generation begins after turn 1 to hide end-of-session latency.

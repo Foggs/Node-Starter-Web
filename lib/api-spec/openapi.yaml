@@ -254,6 +254,33 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /employee-voice:
+    post:
+      operationId: synthesizeEmployeeVoice
+      tags: [coaching]
+      summary: Synthesize the employee's latest turn as audio
+      description: |
+        Synthesizes the most recent pending employee turn as TTS audio using the
+        persona-matched built-in ElevenLabs voice. The audio buffer is stored in
+        the server-side session and an audio URL is returned. Call immediately
+        after POST /api/employee-turn resolves. Degrades gracefully on failure —
+        callers should fall back to text-only mode on 502.
+      responses:
+        "200":
+          description: Audio URL for the synthesized employee turn
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmployeeVoiceResponse"
+        "400":
+          description: No pending employee turn to synthesize
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /improved-replay:
     post:
       operationId: generateImprovedReplay
@@ -551,6 +578,16 @@ components:
       required:
         - transcript
         - turnIndex
+
+    EmployeeVoiceResponse:
+      type: object
+      description: Audio URL for the synthesized employee turn
+      properties:
+        audioUrl:
+          type: string
+          description: Relative URL to the generated TTS audio file for the employee turn
+      required:
+        - audioUrl
 
     ImprovedTurn:
       type: object

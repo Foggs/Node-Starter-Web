@@ -13,6 +13,7 @@ export * from "./coachingTipResponse";
 export * from "./consentRequest";
 export * from "./consentResponse";
 export * from "./employeeTurnResponse";
+export * from "./employeeVoiceResponse";
 export * from "./errorResponse";
 export * from "./feedbackSummary";
 export * from "./healthStatus";

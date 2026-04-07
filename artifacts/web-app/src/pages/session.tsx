@@ -9,6 +9,8 @@ import {
   AlertTriangle,
   Loader2,
   RotateCcw,
+  Volume2,
+  SkipForward,
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
@@ -18,7 +20,9 @@ import { Badge } from "@/components/ui/badge";
 import {
   useGenerateEmployeeTurn,
   useGetCoachingTip,
+  useSynthesizeEmployeeVoice,
 } from "@workspace/api-client-react";
+import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -293,9 +297,15 @@ export default function Session() {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
 
+  // ── voice playback ──
+  const player = useAudioPlayer();
+  const [voiceFetching, setVoiceFetching] = useState(false);
+  const voiceSkippedRef = useRef(false);
+
   // ── api mutations ──
   const employeeTurnMutation = useGenerateEmployeeTurn();
   const coachingTipMutation = useGetCoachingTip();
+  const synthesizeEmployeeVoiceMutation = useSynthesizeEmployeeVoice();
 
   // ── auto-scroll ──
   useEffect(() => {
@@ -330,6 +340,28 @@ export default function Session() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase.tag === "fetching_employee" ? phase.turnNum : null, retryKey]);
+
+  // ── synthesize & auto-play employee voice when entering employee phase ──
+  useEffect(() => {
+    if (phase.tag !== "employee") return;
+
+    voiceSkippedRef.current = false;
+    setVoiceFetching(true);
+
+    synthesizeEmployeeVoiceMutation.mutate(undefined, {
+      onSuccess: (data) => {
+        setVoiceFetching(false);
+        if (!voiceSkippedRef.current) {
+          player.play(data.audioUrl);
+        }
+      },
+      onError: () => {
+        // Silent degradation — session continues text-only
+        setVoiceFetching(false);
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase.tag === "employee" ? phase.turnNum : null]);
 
   // ── complete → navigate to feedback ──
   useEffect(() => {
@@ -456,10 +488,22 @@ export default function Session() {
     navigate("/");
   }
 
+  function handleSkipVoice() {
+    voiceSkippedRef.current = true;
+    player.stop();
+    setVoiceFetching(false);
+  }
+
   // ── derived ──
   const completedManagerTurns = completedTurns.filter(
     (t) => t.role === "manager",
   ).length;
+
+  const voiceActive =
+    phase.tag === "employee" &&
+    (voiceFetching ||
+      player.playbackState === "loading" ||
+      player.playbackState === "playing");
   const progressPct = (completedManagerTurns / 5) * 100;
   const currentTurnNum =
     phase.tag === "complete"
@@ -560,6 +604,20 @@ export default function Session() {
               </div>
               <div className="max-w-xs sm:max-w-sm bg-white border border-slate-200 rounded-2xl px-4 py-3 text-sm leading-relaxed text-slate-700">
                 {phase.text}
+                {voiceActive && (
+                  <div className="mt-2 flex items-center gap-1.5 text-xs text-slate-400">
+                    {voiceFetching || player.playbackState === "loading" ? (
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <Volume2 className="w-3 h-3 animate-pulse text-amber-500" />
+                    )}
+                    <span>
+                      {voiceFetching || player.playbackState === "loading"
+                        ? "Loading voice…"
+                        : "Speaking…"}
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -604,7 +662,34 @@ export default function Session() {
                 </div>
               )}
 
-              {phase.tag === "employee" && (
+              {phase.tag === "employee" && voiceActive && (
+                <div className="flex flex-col items-center gap-2">
+                  <div className="flex items-center justify-between w-full">
+                    <div className="flex items-center gap-2 text-sm text-slate-500">
+                      {voiceFetching || player.playbackState === "loading" ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
+                      ) : (
+                        <Volume2 className="w-4 h-4 animate-pulse text-amber-500" />
+                      )}
+                      <span>
+                        {voiceFetching || player.playbackState === "loading"
+                          ? "Loading employee voice…"
+                          : "Employee is speaking…"}
+                      </span>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 text-slate-600 border-slate-300"
+                      onClick={handleSkipVoice}
+                    >
+                      <SkipForward className="w-3.5 h-3.5" /> Skip
+                    </Button>
+                  </div>
+                </div>
+              )}
+
+              {phase.tag === "employee" && !voiceActive && (
                 <div className="flex flex-col items-center gap-2">
                   <Button
                     size="lg"

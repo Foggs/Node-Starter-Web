@@ -154,6 +154,14 @@ export interface EmployeeTurnResponse {
 }
 
 /**
+ * Audio URL for the synthesized employee turn
+ */
+export interface EmployeeVoiceResponse {
+  /** Relative URL to the generated TTS audio file for the employee turn */
+  audioUrl: string;
+}
+
+/**
  * A rewritten manager turn with optional audio URL
  */
 export interface ImprovedTurn {

@@ -9,6 +9,7 @@ import voiceRouter from "./voice.js";
 import coachingRouter from "./coaching.js";
 import reportRouter from "./report.js";
 import audioRouter from "./audio.js";
+import employeeVoiceRouter from "./employeeVoice.js";
 
 const router: IRouter = Router();
 
@@ -25,5 +26,6 @@ router.use(voiceRouter);
 router.use(coachingRouter);
 router.use(reportRouter);
 router.use(audioRouter);
+router.use(employeeVoiceRouter);
 
 export default router;

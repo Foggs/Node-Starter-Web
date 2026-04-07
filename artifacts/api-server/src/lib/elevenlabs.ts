@@ -20,6 +20,14 @@ const VOICE_SETTINGS = {
   similarity_boost: 0.75,
 };
 
+/** Optional per-call voice settings that override the module-level defaults. */
+export interface VoiceSettings {
+  stability?: number;
+  similarity_boost?: number;
+  style?: number;
+  use_speaker_boost?: boolean;
+}
+
 // ─── error class ─────────────────────────────────────────────────────────────
 
 export class ElevenLabsError extends Error {
@@ -125,15 +133,17 @@ export async function deleteVoice(voiceId: string): Promise<void> {
 }
 
 /**
- * Synthesize speech using a cloned voice.
+ * Synthesize speech using a voice ID.
  *
- * @param voiceId ElevenLabs voice ID (from session — never from the client).
- * @param text    The text to speak. Should be pre-sanitized by the caller.
- * @returns       Raw audio bytes (audio/mpeg) ready to be piped to the client.
+ * @param voiceId  ElevenLabs voice ID (from session or built-in — never from the client).
+ * @param text     The text to speak. Should be pre-sanitized by the caller.
+ * @param settings Optional per-call voice settings; merged over the module defaults.
+ * @returns        Raw audio bytes (audio/mpeg) ready to be piped to the client.
  */
 export async function synthesizeSpeech(
   voiceId: string,
   text: string,
+  settings?: VoiceSettings,
 ): Promise<Buffer> {
   const res = await fetch(`${BASE_URL}/v1/text-to-speech/${voiceId}`, {
     method: "POST",
@@ -144,7 +154,7 @@ export async function synthesizeSpeech(
     body: JSON.stringify({
       text,
       model_id: TTS_MODEL,
-      voice_settings: VOICE_SETTINGS,
+      voice_settings: { ...VOICE_SETTINGS, ...settings },
     }),
   });
 

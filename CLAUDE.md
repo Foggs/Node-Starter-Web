@@ -103,6 +103,9 @@ Full turn-based practice session (Whisper transcription, GPT-4o-mini coaching ti
 - [x] **6.10 Implement `POST /api/export-report`** — `pdfkit` one-page anonymized coaching report: scenario name, persona name, turn count, voice_cloned flag, strengths, improvements, emotion arc data; stream `application/pdf`; no PII; feedback cached in `session.feedback`; 6 tests in `exportReport.test.ts`; pdfkit + fontkit marked external in build to avoid @swc/helpers bundling issue
 - [x] **6.11 Wire export button on feedback page** — `useExportReport` mutation; blob URL download via `<a>` click; spinning "Generating…" state while pending; `isExporting` prop added to `FeedbackPanel`
 
+- [x] **6.12 Implement `POST /api/employee-voice`** — per-persona voice config (`PERSONA_VOICE_CONFIG`) maps each of the 5 personas to a distinct built-in ElevenLabs voice ID + tuned stability/style settings; synthesizes the latest pending employee turn; stores audio as base64 in `session.turns`; returns `{ audioUrl }`; `voiceRateLimit`; 13 tests: auth, 400 no-pending-turn, happy path (persona-specific voice selected, audioUrl resolves, correct transcript used), 502 on ElevenLabs failure (no detail leak), session isolation
+- [x] **6.13 Employee voice auto-playback in session page** — `useAudioPlayer` hook wraps `HTMLAudioElement` (states: idle/loading/playing/error); session page calls `POST /api/employee-voice` on entering `employee` phase, auto-plays result; animated speaker icon + "Loading voice…/Speaking…" label in employee bubble; "Skip" button in control bar; recording UI gated on voice idle/skip/error; graceful silent fallback if 502; 0 TS errors
+
 ### Key constraints
 - `OPENAI_API_KEY` server-side only — never exposed to frontend
 - All transcripts sanitized through `sanitizeTranscript()` before any LLM call
@@ -111,5 +114,7 @@ Full turn-based practice session (Whisper transcription, GPT-4o-mini coaching ti
 - Max transcript: 2,000 chars; truncate silently after sanitization
 - Emotion scores stored on manager turns (alongside coaching tip) — score reflects employee's projected emotional state after manager's turn
 - `llmRateLimit` (30/min) applied to: coaching-tip, feedback-summary, improved-replay
+- `voiceRateLimit` (10/min) applied to: clone-voice, voice/preview, **employee-voice**
 - PDF must contain zero PII — no names, no transcripts, no voice data
 - Audio buffers stored in session memory only — cleared when session expires
+- Employee voice: 5 built-in ElevenLabs voices mapped to personas by temperament (Rachel/tearful, Arnold/defensive, Bella/withdrawn, Adam/professional, Antoni/angry)

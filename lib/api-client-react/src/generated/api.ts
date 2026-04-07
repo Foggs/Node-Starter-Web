@@ -24,6 +24,7 @@ import type {
   ConsentRequest,
   ConsentResponse,
   EmployeeTurnResponse,
+  EmployeeVoiceResponse,
   ErrorResponse,
   FeedbackSummary,
   HealthStatus,
@@ -934,6 +935,95 @@ export const useGenerateEmployeeTurn = <
   TContext
 > => {
   return useMutation(getGenerateEmployeeTurnMutationOptions(options));
+};
+
+/**
+ * Synthesizes the most recent pending employee turn as TTS audio using the
+persona-matched built-in ElevenLabs voice. The audio buffer is stored in
+the server-side session and an audio URL is returned. Call immediately
+after POST /api/employee-turn resolves. Degrades gracefully on failure —
+callers should fall back to text-only mode on 502.
+
+ * @summary Synthesize the employee's latest turn as audio
+ */
+export const getSynthesizeEmployeeVoiceUrl = () => {
+  return `/api/employee-voice`;
+};
+
+export const synthesizeEmployeeVoice = async (
+  options?: RequestInit,
+): Promise<EmployeeVoiceResponse> => {
+  return customFetch<EmployeeVoiceResponse>(getSynthesizeEmployeeVoiceUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getSynthesizeEmployeeVoiceMutationOptions = <
+  TError = ErrorType<ErrorResponse | UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof synthesizeEmployeeVoice>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof synthesizeEmployeeVoice>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["synthesizeEmployeeVoice"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof synthesizeEmployeeVoice>>,
+    void
+  > = () => {
+    return synthesizeEmployeeVoice(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SynthesizeEmployeeVoiceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof synthesizeEmployeeVoice>>
+>;
+
+export type SynthesizeEmployeeVoiceMutationError = ErrorType<
+  ErrorResponse | UnauthorizedResponse
+>;
+
+/**
+ * @summary Synthesize the employee's latest turn as audio
+ */
+export const useSynthesizeEmployeeVoice = <
+  TError = ErrorType<ErrorResponse | UnauthorizedResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof synthesizeEmployeeVoice>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof synthesizeEmployeeVoice>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getSynthesizeEmployeeVoiceMutationOptions(options));
 };
 
 /**
