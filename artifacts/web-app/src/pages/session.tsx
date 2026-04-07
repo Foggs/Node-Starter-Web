@@ -18,6 +18,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import {
+  ApiError,
   useGenerateEmployeeTurn,
   useGetCoachingTip,
   useSynthesizeEmployeeVoice,
@@ -355,8 +356,14 @@ export default function Session() {
           player.play(data.audioUrl);
         }
       },
-      onError: () => {
-        // Silent degradation — session continues text-only
+      onError: (error) => {
+        // 502 is the expected degradation path (ElevenLabs unavailable).
+        // Any other status is unexpected — log it for observability while
+        // still degrading silently so the session is never blocked.
+        const status = error instanceof ApiError ? error.status : 0;
+        if (status !== 502) {
+          console.warn("[employee-voice] unexpected synthesis error:", error);
+        }
         setVoiceFetching(false);
       },
     });

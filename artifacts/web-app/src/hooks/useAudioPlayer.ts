@@ -9,14 +9,14 @@ export interface UseAudioPlayerReturn {
 }
 
 interface AudioHandlers {
-  canplay: () => void;
+  loadeddata: () => void;
   playing: () => void;
   ended: () => void;
   error: () => void;
 }
 
 function removeHandlers(audio: HTMLAudioElement, handlers: AudioHandlers) {
-  audio.removeEventListener("canplay", handlers.canplay);
+  audio.removeEventListener("loadeddata", handlers.loadeddata);
   audio.removeEventListener("playing", handlers.playing);
   audio.removeEventListener("ended", handlers.ended);
   audio.removeEventListener("error", handlers.error);
@@ -25,7 +25,7 @@ function removeHandlers(audio: HTMLAudioElement, handlers: AudioHandlers) {
 /**
  * Manages a single HTMLAudioElement lifecycle with clean state tracking.
  *
- * - `play(url)` sets state to "loading", waits for canplay, then starts
+ * - `play(url)` sets state to "loading", waits for `loadeddata`, then starts
  *   playback and transitions to "playing". On `ended` → "idle".
  * - `stop()` pauses audio, removes all listeners, and resets to "idle".
  * - On audio error → "error" (caller can degrade gracefully).
@@ -58,7 +58,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       setPlaybackState("loading");
 
       const handlers: AudioHandlers = {
-        canplay: () => {
+        loadeddata: () => {
           audio.play().catch(() => {
             if (handlersRef.current) {
               removeHandlers(audio, handlersRef.current);
@@ -90,7 +90,7 @@ export function useAudioPlayer(): UseAudioPlayerReturn {
       };
 
       handlersRef.current = handlers;
-      audio.addEventListener("canplay", handlers.canplay, { once: true });
+      audio.addEventListener("loadeddata", handlers.loadeddata, { once: true });
       audio.addEventListener("playing", handlers.playing);
       audio.addEventListener("ended", handlers.ended);
       audio.addEventListener("error", handlers.error);
