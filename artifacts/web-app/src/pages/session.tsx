@@ -287,6 +287,7 @@ export default function Session() {
   const [completedTurns, setCompletedTurns] = useState<CompletedTurn[]>([]);
   const [phase, setPhase] = useState<Phase>({ tag: "fetching_employee", turnNum: 1 });
   const [fetchError, setFetchError] = useState<string | null>(null);
+  const [retryKey, setRetryKey] = useState(0);
 
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -323,12 +324,12 @@ export default function Session() {
         setPhase({ tag: "employee", turnNum, text: data.transcript });
       },
       onError: () => {
-        setFetchError("Could not reach the employee AI. Check your connection.");
+        setFetchError("The AI service is temporarily unavailable — please try again.");
         // Stay in fetching_employee so the user can retry
       },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase.tag === "fetching_employee" ? phase.turnNum : null]);
+  }, [phase.tag === "fetching_employee" ? phase.turnNum : null, retryKey]);
 
   // ── complete → navigate to feedback ──
   useEffect(() => {
@@ -364,7 +365,7 @@ export default function Session() {
 
   function handleRetryFetch() {
     if (phase.tag !== "fetching_employee") return;
-    setPhase({ tag: "fetching_employee", turnNum: phase.turnNum });
+    setRetryKey((k) => k + 1);
   }
 
   const startRecording = useCallback(async () => {
