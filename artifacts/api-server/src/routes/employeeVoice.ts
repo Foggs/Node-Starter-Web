@@ -57,8 +57,8 @@ const DEFAULT_VOICE_CONFIG: PersonaVoiceConfig = {
 
 router.post(
   "/employee-voice",
-  voiceRateLimit,
   sessionGuard,
+  voiceRateLimit,
   async (req, res) => {
     const turns = req.session.turns ?? [];
 
@@ -74,9 +74,13 @@ router.post(
       return;
     }
 
-    // Select voice config based on current session persona
+    // Select voice config: env override > persona map > default
     const personaId = req.session.persona ?? "";
-    const voiceConfig = PERSONA_VOICE_CONFIG[personaId] ?? DEFAULT_VOICE_CONFIG;
+    const personaConfig = PERSONA_VOICE_CONFIG[personaId] ?? DEFAULT_VOICE_CONFIG;
+    const overrideVoiceId = process.env["ELEVENLABS_EMPLOYEE_VOICE_ID"];
+    const voiceConfig: PersonaVoiceConfig = overrideVoiceId
+      ? { voiceId: overrideVoiceId, settings: personaConfig.settings }
+      : personaConfig;
 
     let audioBuffer: Buffer;
     try {

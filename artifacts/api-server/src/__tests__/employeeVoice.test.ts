@@ -295,6 +295,46 @@ describe("POST /api/employee-voice", () => {
     });
   });
 
+  // ─── ELEVENLABS_EMPLOYEE_VOICE_ID env override ────────────────────────────
+
+  describe("ELEVENLABS_EMPLOYEE_VOICE_ID global override", () => {
+    it("uses the env override voice ID instead of the persona map", async () => {
+      const cookie = await mintSession();
+      await configureSession(cookie, "tearful"); // tearful → Rachel normally
+      await driveEmployeeTurn(cookie);
+
+      vi.stubEnv("ELEVENLABS_EMPLOYEE_VOICE_ID", "custom-voice-id-override");
+      vi.mocked(synthesizeSpeech).mockResolvedValueOnce(FAKE_AUDIO);
+
+      await request(app)
+        .post("/api/employee-voice")
+        .set("Cookie", cookie)
+        .expect(200);
+
+      const [voiceId] = vi.mocked(synthesizeSpeech).mock.calls[0]!;
+      expect(voiceId).toBe("custom-voice-id-override");
+    });
+
+    it("retains the persona voice settings when override is active", async () => {
+      const cookie = await mintSession();
+      await configureSession(cookie, "angry"); // angry → Antoni: stability 0.2, style 0.7
+      await driveEmployeeTurn(cookie);
+
+      vi.stubEnv("ELEVENLABS_EMPLOYEE_VOICE_ID", "override-id");
+      vi.mocked(synthesizeSpeech).mockResolvedValueOnce(FAKE_AUDIO);
+
+      await request(app)
+        .post("/api/employee-voice")
+        .set("Cookie", cookie)
+        .expect(200);
+
+      const [voiceId, , settings] = vi.mocked(synthesizeSpeech).mock.calls[0]!;
+      expect(voiceId).toBe("override-id");
+      expect(settings?.stability).toBe(0.2); // still uses angry persona settings
+      expect(settings?.style).toBe(0.7);
+    });
+  });
+
   // ─── session isolation ───────────────────────────────────────────────────
 
   describe("session isolation", () => {
