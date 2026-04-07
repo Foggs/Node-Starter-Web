@@ -215,6 +215,24 @@ describe("POST /api/employee-voice", () => {
       expect(settings?.style).toBe(0.7);
     });
 
+    it("calls synthesizeSpeech with the defensive persona voice config", async () => {
+      const cookie = await mintSession();
+      await configureSession(cookie, "defensive");
+      await driveEmployeeTurn(cookie);
+
+      vi.mocked(synthesizeSpeech).mockResolvedValueOnce(FAKE_AUDIO);
+
+      await request(app)
+        .post("/api/employee-voice")
+        .set("Cookie", cookie)
+        .expect(200);
+
+      const [voiceId, , settings] = vi.mocked(synthesizeSpeech).mock.calls[0]!;
+      expect(voiceId).toBe("VR6AewLTigWG4xSOukaG"); // Arnold
+      expect(settings?.stability).toBe(0.7);
+      expect(settings?.style).toBe(0.4);
+    });
+
     it("calls synthesizeSpeech with the withdrawn persona voice config", async () => {
       const cookie = await mintSession();
       await configureSession(cookie, "withdrawn");
@@ -231,6 +249,24 @@ describe("POST /api/employee-voice", () => {
       expect(voiceId).toBe("EXAVITQu4vr4xnSDxMaL"); // Bella
       expect(settings?.stability).toBe(0.9);
       expect(settings?.style).toBe(0.05);
+    });
+
+    it("calls synthesizeSpeech with the professional persona voice config", async () => {
+      const cookie = await mintSession();
+      await configureSession(cookie, "professional");
+      await driveEmployeeTurn(cookie);
+
+      vi.mocked(synthesizeSpeech).mockResolvedValueOnce(FAKE_AUDIO);
+
+      await request(app)
+        .post("/api/employee-voice")
+        .set("Cookie", cookie)
+        .expect(200);
+
+      const [voiceId, , settings] = vi.mocked(synthesizeSpeech).mock.calls[0]!;
+      expect(voiceId).toBe("pNInz6obpgDQGcFmaJgB"); // Adam
+      expect(settings?.stability).toBe(0.8);
+      expect(settings?.style).toBe(0.1);
     });
 
     it("uses the employee turn transcript as TTS input", async () => {
