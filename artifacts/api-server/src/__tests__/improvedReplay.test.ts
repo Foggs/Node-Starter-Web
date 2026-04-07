@@ -300,6 +300,48 @@ describe("POST /api/improved-replay — TTS fallback", () => {
   });
 });
 
+// ── OpenAI error handling ─────────────────────────────────────────────────────
+
+describe("POST /api/improved-replay — OpenAI error handling", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("returns 502 when chatCompletion throws an OpenAI APIError (status 401)", async () => {
+    const cookie = await mintSession();
+    await configureSession(cookie);
+    await injectManagerTurns(cookie, 1);
+
+    const apiErr = Object.assign(new Error("Unauthorized"), { status: 401 });
+    vi.mocked(chatCompletion).mockRejectedValue(apiErr);
+
+    const res = await request(app)
+      .post("/api/improved-replay")
+      .set("Cookie", cookie);
+
+    expect(res.status).toBe(502);
+    expect(res.body).toHaveProperty("error");
+    expect(res.body.error).toMatch(/AI service unavailable/i);
+  });
+
+  it("does not leak OpenAI error details to the client on chatCompletion failure", async () => {
+    const cookie = await mintSession();
+    await configureSession(cookie);
+    await injectManagerTurns(cookie, 1);
+
+    const apiErr = Object.assign(new Error("Invalid API key — check your credentials"), { status: 401 });
+    vi.mocked(chatCompletion).mockRejectedValue(apiErr);
+
+    const res = await request(app)
+      .post("/api/improved-replay")
+      .set("Cookie", cookie);
+
+    expect(res.status).toBe(502);
+    expect(JSON.stringify(res.body)).not.toContain("Invalid API key");
+    expect(JSON.stringify(res.body)).not.toContain("401");
+  });
+});
+
 // ── prompt content ────────────────────────────────────────────────────────────
 
 describe("POST /api/improved-replay — prompt content", () => {

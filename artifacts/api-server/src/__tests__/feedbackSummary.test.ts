@@ -360,6 +360,52 @@ describe("POST /api/feedback-summary", () => {
     });
   });
 
+  // ── OpenAI error handling ──────────────────────────────────────────────────
+
+  describe("OpenAI error handling", () => {
+    it("returns 502 when chatCompletion throws an OpenAI APIError (status 401)", async () => {
+      vi.stubEnv("OPENAI_API_KEY", "sk-test");
+      vi.stubEnv("ELEVENLABS_API_KEY", "el-test");
+      vi.stubEnv("ELEVENLABS_AGENT_ID", "agent-test");
+
+      const cookie = await mintSession();
+      await configureSession(cookie);
+      await injectManagerTurns(cookie, 1);
+
+      const apiErr = Object.assign(new Error("Unauthorized"), { status: 401 });
+      vi.mocked(chatCompletion).mockRejectedValue(apiErr);
+
+      const res = await request(app)
+        .post("/api/feedback-summary")
+        .set("Cookie", cookie);
+
+      expect(res.status).toBe(502);
+      expect(res.body).toHaveProperty("error");
+      expect(res.body.error).toMatch(/AI service unavailable/i);
+    });
+
+    it("does not leak OpenAI error details to the client on chatCompletion failure", async () => {
+      vi.stubEnv("OPENAI_API_KEY", "sk-test");
+      vi.stubEnv("ELEVENLABS_API_KEY", "el-test");
+      vi.stubEnv("ELEVENLABS_AGENT_ID", "agent-test");
+
+      const cookie = await mintSession();
+      await configureSession(cookie);
+      await injectManagerTurns(cookie, 1);
+
+      const apiErr = Object.assign(new Error("Invalid API key — check your credentials"), { status: 401 });
+      vi.mocked(chatCompletion).mockRejectedValue(apiErr);
+
+      const res = await request(app)
+        .post("/api/feedback-summary")
+        .set("Cookie", cookie);
+
+      expect(res.status).toBe(502);
+      expect(JSON.stringify(res.body)).not.toContain("Invalid API key");
+      expect(JSON.stringify(res.body)).not.toContain("401");
+    });
+  });
+
   // ── LLM resilience ─────────────────────────────────────────────────────────
 
   describe("LLM resilience", () => {

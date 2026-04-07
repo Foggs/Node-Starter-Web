@@ -193,23 +193,35 @@ router.post(
       return;
     }
 
-    const rawTranscript = await transcribeAudio(
-      req.file.buffer,
-      req.file.mimetype,
-    );
+    let rawTranscript: string;
+    try {
+      rawTranscript = await transcribeAudio(
+        req.file.buffer,
+        req.file.mimetype,
+      );
+    } catch {
+      res.status(502).json({ error: "AI service unavailable — try again later" });
+      return;
+    }
 
     const transcript = sanitizeTranscript(rawTranscript);
 
     const scenario = scenarios.find((s) => s.id === req.session.scenario);
     const persona = personas.find((p) => p.id === req.session.persona);
 
-    const rawResponse = await chatCompletion(
-      [
-        { role: "system", content: buildSystemPrompt(scenario, persona) },
-        { role: "user", content: buildUserPrompt(transcript, turnIndex) },
-      ],
-      { temperature: 0.7, max_tokens: 400 },
-    );
+    let rawResponse: string;
+    try {
+      rawResponse = await chatCompletion(
+        [
+          { role: "system", content: buildSystemPrompt(scenario, persona) },
+          { role: "user", content: buildUserPrompt(transcript, turnIndex) },
+        ],
+        { temperature: 0.7, max_tokens: 400 },
+      );
+    } catch {
+      res.status(502).json({ error: "AI service unavailable — try again later" });
+      return;
+    }
 
     const { coachingTip, emotionScore } = parseCoachingResponse(rawResponse);
 
@@ -252,19 +264,25 @@ router.post("/employee-turn", llmRateLimit, sessionGuard, async (req, res) => {
   const scenario = scenarios.find((s) => s.id === req.session.scenario);
   const persona = personas.find((p) => p.id === req.session.persona);
 
-  const rawResponse = await chatCompletion(
-    [
-      {
-        role: "system",
-        content: buildEmployeeSystemPrompt(scenario, persona),
-      },
-      {
-        role: "user",
-        content: buildEmployeeUserPrompt(turns, turnIndex),
-      },
-    ],
-    { temperature: 0.85, max_tokens: 150 },
-  );
+  let rawResponse: string;
+  try {
+    rawResponse = await chatCompletion(
+      [
+        {
+          role: "system",
+          content: buildEmployeeSystemPrompt(scenario, persona),
+        },
+        {
+          role: "user",
+          content: buildEmployeeUserPrompt(turns, turnIndex),
+        },
+      ],
+      { temperature: 0.85, max_tokens: 150 },
+    );
+  } catch {
+    res.status(502).json({ error: "AI service unavailable — try again later" });
+    return;
+  }
 
   const transcript = rawResponse.trim();
 
@@ -346,16 +364,22 @@ router.post(
     }> = [];
 
     for (const turn of managerTurns) {
-      const rawImproved = await chatCompletion(
-        [
-          { role: "system", content: systemPrompt },
-          {
-            role: "user",
-            content: buildRewriteUserPrompt(turn.transcript, turn.turn_index),
-          },
-        ],
-        { temperature: 0.7, max_tokens: 300 },
-      );
+      let rawImproved: string;
+      try {
+        rawImproved = await chatCompletion(
+          [
+            { role: "system", content: systemPrompt },
+            {
+              role: "user",
+              content: buildRewriteUserPrompt(turn.transcript, turn.turn_index),
+            },
+          ],
+          { temperature: 0.7, max_tokens: 300 },
+        );
+      } catch {
+        res.status(502).json({ error: "AI service unavailable — try again later" });
+        return;
+      }
 
       const improvedTranscript = sanitizeTranscript(rawImproved.trim());
 
@@ -524,13 +548,19 @@ router.post("/feedback-summary", llmRateLimit, sessionGuard, async (req, res) =>
   const scenario = scenarios.find((s) => s.id === req.session.scenario);
   const persona = personas.find((p) => p.id === req.session.persona);
 
-  const rawResponse = await chatCompletion(
-    [
-      { role: "system", content: buildFeedbackSystemPrompt() },
-      { role: "user", content: buildFeedbackUserPrompt(scenario, persona, turns) },
-    ],
-    { temperature: 0.6, max_tokens: 600 },
-  );
+  let rawResponse: string;
+  try {
+    rawResponse = await chatCompletion(
+      [
+        { role: "system", content: buildFeedbackSystemPrompt() },
+        { role: "user", content: buildFeedbackUserPrompt(scenario, persona, turns) },
+      ],
+      { temperature: 0.6, max_tokens: 600 },
+    );
+  } catch {
+    res.status(502).json({ error: "AI service unavailable — try again later" });
+    return;
+  }
 
   const { strengths, improvements, summary } = parseFeedbackResponse(rawResponse);
 

@@ -328,6 +328,52 @@ describe("POST /api/coaching-tip — transcript sanitization", () => {
   });
 });
 
+// ─── OpenAI error handling ────────────────────────────────────────────────────
+
+describe("POST /api/coaching-tip — OpenAI error handling", () => {
+  it("returns 502 when transcribeAudio throws an OpenAI APIError (status 401)", async () => {
+    const apiErr = Object.assign(new Error("Unauthorized"), { status: 401 });
+    vi.mocked(transcribeAudio).mockRejectedValue(apiErr);
+    const cookie = await getConfiguredSessionCookie();
+    const res = await request(app)
+      .post("/api/coaching-tip")
+      .set("Cookie", cookie)
+      .attach("audio", fakeAudio(), { filename: "turn.webm", contentType: "audio/webm" })
+      .field("turnIndex", "1");
+    expect(res.status).toBe(502);
+    expect(res.body).toHaveProperty("error");
+    expect(res.body.error).toMatch(/AI service unavailable/i);
+  });
+
+  it("returns 502 when chatCompletion throws an OpenAI APIError (status 401)", async () => {
+    const apiErr = Object.assign(new Error("Unauthorized"), { status: 401 });
+    vi.mocked(chatCompletion).mockRejectedValue(apiErr);
+    const cookie = await getConfiguredSessionCookie();
+    const res = await request(app)
+      .post("/api/coaching-tip")
+      .set("Cookie", cookie)
+      .attach("audio", fakeAudio(), { filename: "turn.webm", contentType: "audio/webm" })
+      .field("turnIndex", "1");
+    expect(res.status).toBe(502);
+    expect(res.body).toHaveProperty("error");
+    expect(res.body.error).toMatch(/AI service unavailable/i);
+  });
+
+  it("does not leak OpenAI error message or status to the client", async () => {
+    const apiErr = Object.assign(new Error("Invalid API key — check your credentials"), { status: 401 });
+    vi.mocked(chatCompletion).mockRejectedValue(apiErr);
+    const cookie = await getConfiguredSessionCookie();
+    const res = await request(app)
+      .post("/api/coaching-tip")
+      .set("Cookie", cookie)
+      .attach("audio", fakeAudio(), { filename: "turn.webm", contentType: "audio/webm" })
+      .field("turnIndex", "1");
+    expect(res.status).toBe(502);
+    expect(JSON.stringify(res.body)).not.toContain("Invalid API key");
+    expect(JSON.stringify(res.body)).not.toContain("401");
+  });
+});
+
 // ─── LLM error resilience ─────────────────────────────────────────────────────
 
 describe("POST /api/coaching-tip — LLM response resilience", () => {
