@@ -219,11 +219,14 @@ export default function Onboarding() {
           </div>
           <div>
             <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-              Step 2 of 4
+              Step 4 of 4
             </p>
             <h1 className="text-2xl font-bold text-slate-900">
               Record Your Voice
             </h1>
+            <p className="text-sm text-slate-500 mt-0.5">
+              One last step before your session begins
+            </p>
           </div>
         </div>
 
@@ -485,13 +488,13 @@ export default function Onboarding() {
 
         {/* Navigation */}
         <div className="flex items-center justify-between">
-          <Link href="/consent">
+          <Link href="/setup">
             <Button variant="ghost" className="text-slate-500">
               ← Back
             </Button>
           </Link>
           <Button
-            onClick={() => navigate("/setup")}
+            onClick={() => navigate("/session")}
             disabled={!isTerminal}
             className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold gap-2 disabled:opacity-40"
           >

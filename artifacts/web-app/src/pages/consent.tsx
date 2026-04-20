@@ -15,7 +15,7 @@ export default function Consent() {
   const mutation = useRecordConsent({
     mutation: {
       onSuccess: () => {
-        navigate("/onboarding");
+        navigate("/setup");
       },
     },
   });

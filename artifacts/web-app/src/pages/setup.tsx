@@ -127,7 +127,7 @@ export default function Setup() {
           </div>
           <div>
             <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">
-              Step 3 of 4
+              Step 2 of 4
             </p>
             <h1 className="text-2xl font-bold text-slate-900">
               Choose your scenario &amp; persona
@@ -214,7 +214,7 @@ export default function Setup() {
         )}
 
         <div className="flex items-center justify-between">
-          <Link href="/onboarding">
+          <Link href="/consent">
             <Button variant="ghost" className="text-slate-500">
               ← Back
             </Button>
@@ -228,11 +228,11 @@ export default function Setup() {
               </span>
             )}
             <Button
-              onClick={() => navigate("/session")}
+              onClick={() => navigate("/onboarding")}
               disabled={!canBegin}
               className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold gap-2 disabled:opacity-40"
             >
-              Begin Session <ArrowRight className="w-4 h-4" />
+              Continue <ArrowRight className="w-4 h-4" />
             </Button>
           </div>
         </div>
