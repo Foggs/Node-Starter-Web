@@ -1,0 +1,72 @@
+Use the agent-skills workflows for this task:
+- /plan  → break the work into tasks before touching any code  
+- /build → implement incrementally, one slice at a time  
+- /review → verify routing, back-navigation, and fallback paths before finishing
+
+---
+
+## Task: Move voice cloning to Step 4 of 4
+
+Reorder the onboarding flow so voice cloning happens after scenario 
+and persona selection. The new step order is:
+
+Step 1: Biometric Consent  
+Step 2: Scenario Selection  
+Step 3: Persona Selection  
+Step 4: Record Your Voice (voice cloning)
+
+---
+
+## Incremental implementation plan (follow this order)
+
+**Slice 1 — Update routing only**
+- Move the voice cloning route to position 4 in the onboarding 
+  sequence
+- Verify the app loads and navigates without errors before 
+  proceeding
+
+**Slice 2 — Update step counters**  
+- Change "STEP X OF 4" labels on each screen to reflect new order
+- Consent = Step 1, Scenario = Step 2, Persona = Step 3, 
+  Voice = Step 4
+- Verify each screen displays the correct step number
+
+**Slice 3 — Update Persona screen CTA**  
+- "Begin Session" button on persona screen should now advance to 
+  voice cloning (Step 4), not start the session directly
+- Verify back-navigation from Step 4 returns to Step 3 (Persona)
+
+**Slice 4 — Update voice cloning screen copy**  
+- Change the framing text to reflect the user is about to begin, 
+  e.g. "One last step before your session begins"
+- The Continue / recording UI / success state / generic voice 
+  fallback path remain unchanged
+- After successful clone OR fallback selection, Continue starts 
+  the practice session
+
+**Slice 5 — Verify session state integrity**  
+- Confirm session state is set in the correct order: 
+  consent → scenario → persona → voice_id
+- Confirm the generic voice fallback still sets voice_cloned: false
+  correctly from the new Step 4 position
+
+---
+
+## Constraints
+- Frontend routing/ordering change only — no backend logic, 
+  session state shape, or API calls should change
+- Do not proceed to the next slice until the current one is 
+  verified working
+- Run `pnpm run typecheck` after Slice 5 to confirm no type errors
+
+---
+
+## Acceptance checklist
+- [ ] Step counters are correct on all 4 screens
+- [ ] Back button on each step navigates to the correct prior screen
+- [ ] Persona screen CTA advances to voice cloning, not the session
+- [ ] Voice cloning screen copy reflects "about to begin" framing
+- [ ] Generic voice fallback works from new Step 4 position
+- [ ] Continue after cloning/fallback correctly starts the session
+- [ ] Session state order is intact (consent → scenario → persona → voice)
+- [ ] `pnpm run typecheck` passes with no errors

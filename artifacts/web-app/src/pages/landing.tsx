@@ -71,10 +71,13 @@ export default function Landing() {
               size="lg"
               className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-8 gap-2 text-base"
             >
-              Begin Rehearsal <ArrowRight className="w-4 h-4" />
+              Start Practicing
+              <ArrowRight className="w-4 h-4" />
             </Button>
           </Link>
-          <span className="text-sm text-slate-500">No account needed · Sessions expire in 2 hours</span>
+          <span className="text-sm text-slate-500">
+            No account needed · Sessions expire in 2 hours
+          </span>
         </div>
       </section>
 
@@ -102,7 +105,9 @@ export default function Landing() {
               </div>
               <div>
                 <p className="font-semibold text-white">{title}</p>
-                <p className="mt-1 text-sm text-slate-400 leading-relaxed">{body}</p>
+                <p className="mt-1 text-sm text-slate-400 leading-relaxed">
+                  {body}
+                </p>
               </div>
             </div>
           ))}
@@ -113,7 +118,8 @@ export default function Landing() {
       <footer className="border-t border-slate-800 px-6 py-5">
         <p className="text-center text-xs text-slate-600">
           ExitCoach &copy; {new Date().getFullYear()} · Biometric data is
-          processed in-session only and never retained after the session expires.
+          processed in-session only and never retained after the session
+          expires.
         </p>
       </footer>
     </div>
