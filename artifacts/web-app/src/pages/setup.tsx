@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
 import { Settings2, ArrowRight, AlertCircle, Loader2 } from "lucide-react";
 import {
@@ -79,11 +79,43 @@ function ErrorCard({ message }: { message: string }) {
   );
 }
 
+const PREFS_KEY = "exit-coach-setup-prefs";
+const DEFAULT_PERSONA_ORDER = ["professional", "tearful", "defensive", "withdrawn", "angry"];
+
+type Prefs = { scenarioId?: string; personaId?: string };
+
+function loadPrefs(): Prefs {
+  try {
+    const raw = localStorage.getItem(PREFS_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return typeof parsed === "object" && parsed ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function savePrefs(prefs: Prefs) {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+  } catch {
+    // localStorage unavailable — silently ignore
+  }
+}
+
+function pickDefaultPersona(personas: Persona[]): string | null {
+  for (const id of DEFAULT_PERSONA_ORDER) {
+    if (personas.find((p) => p.id === id)) return id;
+  }
+  return personas[0]?.id ?? null;
+}
+
 export default function Setup() {
   const [selectedScenario, setSelectedScenario] = useState<string | null>(null);
   const [selectedPersona, setSelectedPersona] = useState<string | null>(null);
   const [saveError, setSaveError] = useState(false);
   const [, navigate] = useLocation();
+  const defaultsAppliedRef = useRef(false);
 
   const {
     data: scenarios,
@@ -104,15 +136,42 @@ export default function Setup() {
     },
   });
 
+  // Apply smart defaults once both lists have loaded — restore the user's last
+  // choice (from localStorage), or fall back to the first scenario and a
+  // sensible persona. Persists the chosen pair to the server immediately so
+  // Continue is enabled with no clicks.
+  useEffect(() => {
+    if (defaultsAppliedRef.current) return;
+    if (!scenarios || !personas) return;
+    if (scenarios.length === 0 || personas.length === 0) return;
+
+    const prefs = loadPrefs();
+    const scenarioId =
+      (prefs.scenarioId && scenarios.find((s) => s.id === prefs.scenarioId)?.id) ||
+      scenarios[0].id;
+    const personaId =
+      (prefs.personaId && personas.find((p) => p.id === prefs.personaId)?.id) ||
+      pickDefaultPersona(personas);
+
+    defaultsAppliedRef.current = true;
+    setSelectedScenario(scenarioId);
+    if (personaId) setSelectedPersona(personaId);
+    saveSession({
+      data: personaId ? { scenario: scenarioId, persona: personaId } : { scenario: scenarioId },
+    });
+  }, [scenarios, personas, saveSession]);
+
   function handleScenarioSelect(id: string) {
     setSelectedScenario(id);
     setSaveError(false);
+    savePrefs({ ...loadPrefs(), scenarioId: id });
     saveSession({ data: { scenario: id } });
   }
 
   function handlePersonaSelect(id: string) {
     setSelectedPersona(id);
     setSaveError(false);
+    savePrefs({ ...loadPrefs(), personaId: id });
     saveSession({ data: { persona: id } });
   }
 
@@ -150,7 +209,7 @@ export default function Setup() {
 
           {scenariosLoading && <LoadingGrid />}
           {scenariosError && (
-            <ErrorCard message="Could not load scenarios. Is the API server running?" />
+            <ErrorCard message="We can't reach the practice server right now. Check your connection and try again." />
           )}
           {scenarios && (
             <SelectionGrid
@@ -176,7 +235,7 @@ export default function Setup() {
 
           {personasLoading && <LoadingGrid />}
           {personasError && (
-            <ErrorCard message="Could not load personas. Is the API server running?" />
+            <ErrorCard message="We can't reach the practice server right now. Check your connection and try again." />
           )}
           {personas && (
             <SelectionGrid

@@ -42,6 +42,31 @@ function pickMimeType(): string {
   return "";
 }
 
+function uploadErrorMessage(status: number): string {
+  if (status === 0) {
+    return "We couldn't reach the server. Please check your connection and try again.";
+  }
+  if (status === 401 || status === 403) {
+    return "Your session has expired. Please refresh the page and start again.";
+  }
+  if (status === 408 || status === 504) {
+    return "The upload took too long. Please try again on a stronger connection.";
+  }
+  if (status === 413) {
+    return "That recording is too large to upload. Please try a shorter take.";
+  }
+  if (status === 429) {
+    return "Too many attempts in a short time. Please wait a moment and try again.";
+  }
+  if (status >= 500) {
+    return "Something went wrong on our end while saving your voice. Please try again in a moment.";
+  }
+  if (status >= 400) {
+    return "We couldn't process that recording. Please try again.";
+  }
+  return "Something went wrong while uploading your voice. Please try again.";
+}
+
 function formatTime(s: number): string {
   const m = Math.floor(s / 60);
   const sec = s % 60;
@@ -78,10 +103,10 @@ function uploadAudio(
         try {
           resolve(JSON.parse(xhr.responseText) as { success: boolean; fallback: boolean });
         } catch {
-          reject(new Error("Invalid response from server"));
+          reject(new Error("We couldn't read the server's response. Please try recording again."));
         }
       } else {
-        reject(new Error(`Upload failed (${xhr.status})`));
+        reject(new Error(uploadErrorMessage(xhr.status)));
       }
     };
 
