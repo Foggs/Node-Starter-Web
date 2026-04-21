@@ -1,22 +1,2 @@
 export * from "./generated/api";
-export type {
-  CoachingTipRequest,
-  CoachingTipResponse,
-  ConsentRequest,
-  ConsentResponse,
-  EmployeeTurnResponse,
-  EmployeeVoiceResponse,
-  ErrorResponse,
-  FeedbackSummary,
-  HealthStatus,
-  ImprovedTurn,
-  Persona,
-  PersonaId,
-  Ping200,
-  Scenario,
-  ScenarioId,
-  SessionState,
-  Turn,
-  TurnRole,
-  UnauthorizedResponse,
-} from "./generated/types";
+export * from "./generated/types";

@@ -6,8 +6,6 @@
  * OpenAPI spec version: 0.2.0
  */
 
-export * from "./cloneVoiceBody";
-export * from "./cloneVoiceResponse";
 export * from "./coachingTipRequest";
 export * from "./coachingTipResponse";
 export * from "./consentRequest";
@@ -27,4 +25,3 @@ export * from "./sessionState";
 export * from "./turn";
 export * from "./turnRole";
 export * from "./unauthorizedResponse";
-export * from "./updateSessionBody";

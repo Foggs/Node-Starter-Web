@@ -99,6 +99,12 @@ export interface SessionState {
   turns: Turn[];
 }
 
+export interface CloneVoiceResponse {
+  success: boolean;
+  /** True when voice cloning failed and a generic ElevenLabs voice will be used instead */
+  fallback: boolean;
+}
+
 export interface ConsentRequest {
   /** Must be true; server rejects false */
   consentGiven: boolean;
@@ -107,12 +113,6 @@ export interface ConsentRequest {
 export interface ConsentResponse {
   /** Server-side ISO 8601 timestamp of when consent was recorded */
   timestamp: string;
-}
-
-export interface CloneVoiceResponse {
-  success: boolean;
-  /** True when voice cloning failed and a generic ElevenLabs voice will be used instead */
-  fallback: boolean;
 }
 
 export interface CoachingTipRequest {

@@ -503,6 +503,18 @@ components:
         - voice_id_present
         - turns
 
+    CloneVoiceResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        fallback:
+          type: boolean
+          description: True when voice cloning failed and a generic ElevenLabs voice will be used instead
+      required:
+        - success
+        - fallback
+
     ConsentRequest:
       type: object
       properties:
@@ -521,18 +533,6 @@ components:
           description: Server-side ISO 8601 timestamp of when consent was recorded
       required:
         - timestamp
-
-    CloneVoiceResponse:
-      type: object
-      properties:
-        success:
-          type: boolean
-        fallback:
-          type: boolean
-          description: True when voice cloning failed and a generic ElevenLabs voice will be used instead
-      required:
-        - success
-        - fallback
 
     CoachingTipRequest:
       type: object
