@@ -408,6 +408,22 @@ export default function Onboarding() {
                   phase === "uploading" ||
                   isTerminal
                 }
+                aria-label={
+                  phase === "recording"
+                    ? `Stop recording (${formatTime(seconds)} elapsed)`
+                    : phase === "requesting"
+                      ? "Requesting microphone access"
+                      : phase === "uploading"
+                        ? "Uploading recording"
+                        : phase === "success"
+                          ? "Voice cloned successfully"
+                          : phase === "fallback"
+                            ? "Recording complete, using default voice"
+                            : phase === "error"
+                              ? "Recording unavailable"
+                              : "Start recording your voice sample"
+                }
+                aria-pressed={phase === "recording"}
                 className={cn(
                   "w-20 h-20 rounded-full flex items-center justify-center transition-all shadow-md focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-500",
                   phase === "idle" &&
@@ -435,8 +451,21 @@ export default function Onboarding() {
                 )}
               </button>
 
+              {/* Live announcement of phase changes */}
+              <div role="status" aria-live="polite" className="sr-only">
+                {phase === "requesting" && "Requesting microphone access"}
+                {phase === "recording" &&
+                  `Recording in progress, ${seconds} seconds elapsed`}
+                {phase === "uploading" &&
+                  `Uploading recording, ${uploadProgress}%`}
+                {phase === "success" && "Voice cloned successfully"}
+                {phase === "fallback" &&
+                  "Recording complete, default voice will be used"}
+                {phase === "error" && `Error: ${errorMsg}`}
+              </div>
+
               {/* Status label */}
-              <p className="text-sm text-slate-500 text-center min-h-[20px]">
+              <p className="text-sm text-slate-600 text-center min-h-[20px]">
                 {phase === "idle" && "Tap to start recording"}
                 {phase === "requesting" && "Requesting microphone access…"}
                 {phase === "recording" && (

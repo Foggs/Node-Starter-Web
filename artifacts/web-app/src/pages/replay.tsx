@@ -63,26 +63,34 @@ function TurnAudioPlayer({ audioUrl }: { audioUrl?: string }) {
         variant="outline"
         className={`gap-1.5 text-xs ${
           playing
-            ? "border-amber-400 text-amber-700 bg-amber-50"
-            : "text-slate-600"
+            ? "border-amber-500 text-amber-800 bg-amber-50"
+            : "text-slate-700"
         }`}
         onClick={toggle}
         title={
           playing ? "Pause" : hasEnded ? "Replay audio" : "Play improved version"
         }
+        aria-label={
+          playing
+            ? "Pause improved audio"
+            : hasEnded
+              ? "Replay improved audio"
+              : "Play improved audio in your cloned voice"
+        }
+        aria-pressed={playing}
       >
         {playing ? (
-          <Pause className="w-3.5 h-3.5" />
+          <Pause className="w-3.5 h-3.5" aria-hidden="true" />
         ) : hasEnded ? (
-          <RefreshCcw className="w-3.5 h-3.5" />
+          <RefreshCcw className="w-3.5 h-3.5" aria-hidden="true" />
         ) : (
-          <Play className="w-3.5 h-3.5" />
+          <Play className="w-3.5 h-3.5" aria-hidden="true" />
         )}
         {playing ? "Pause" : hasEnded ? "Replay" : "Play"}
       </Button>
       {playing && (
-        <span className="flex items-center gap-1 text-xs text-amber-600">
-          <Volume2 className="w-3.5 h-3.5 animate-pulse" />
+        <span className="flex items-center gap-1 text-xs text-amber-700">
+          <Volume2 className="w-3.5 h-3.5 animate-pulse" aria-hidden="true" />
           Playing…
         </span>
       )}

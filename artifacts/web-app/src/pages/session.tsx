@@ -28,6 +28,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {
   ApiError,
   getGetSessionQueryKey,
@@ -313,67 +314,87 @@ function CoachingTipOverlay({ tip, turnNum, onContinue }: CoachingTipOverlayProp
     ? ` (auto-advancing in ${secondsLeft} seconds)`
     : "";
 
+  // Use Radix Dialog primitive directly so we get a focus trap, focus
+  // restoration to the previously focused element, and Escape handling — but
+  // without shadcn's built-in close button (this overlay only exits via
+  // Continue or auto-advance).
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="coaching-tip-title"
-      className="fixed inset-0 bg-slate-900/50 flex items-end sm:items-center justify-center z-50 p-4"
+    <DialogPrimitive.Root
+      open
+      onOpenChange={(open) => {
+        if (!open) handleContinueNow();
+      }}
     >
-      <Card
-        className="w-full max-w-lg border-slate-200 shadow-2xl"
-        {...cardHandlers}
-      >
-        <CardContent className="pt-5 pb-5">
-          <div className="flex items-center justify-between mb-3">
-            <p
-              id="coaching-tip-title"
-              className="text-xs font-semibold text-amber-600 uppercase tracking-wider"
-            >
-              Turn {turnNum} coaching
-            </p>
-            <EmotionBadge score={tip.emotionScore} />
-          </div>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-slate-900/50 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
+        <DialogPrimitive.Content
+          aria-describedby={undefined}
+          // Only Continue button or auto-advance should dismiss this overlay.
+          // Block accidental dismiss via outside click / pointer-down so users
+          // don't lose the coaching tip by tapping anywhere on the page.
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+          className="fixed left-[50%] top-auto bottom-4 sm:top-[50%] sm:bottom-auto z-50 translate-x-[-50%] sm:translate-y-[-50%] w-[calc(100%-2rem)] max-w-lg outline-none"
+        >
+          <Card
+            className="w-full border-slate-200 shadow-2xl"
+            {...cardHandlers}
+          >
+            <CardContent className="pt-5 pb-5">
+              <div className="flex items-center justify-between mb-3">
+                <DialogPrimitive.Title
+                  id="coaching-tip-title"
+                  className="text-xs font-semibold text-amber-700 uppercase tracking-wider"
+                >
+                  Turn {turnNum} coaching
+                </DialogPrimitive.Title>
+                <EmotionBadge score={tip.emotionScore} />
+              </div>
 
-          <p className="text-sm leading-relaxed text-slate-700 mb-4">
-            {tip.coachingTip}
-          </p>
+              <p className="text-sm leading-relaxed text-slate-700 mb-4">
+                {tip.coachingTip}
+              </p>
 
-          <div className="text-xs text-slate-400 mb-4 border-t border-slate-100 pt-3">
-            <span className="font-medium text-slate-500">You said: </span>
-            {tip.transcript.length > 120
-              ? tip.transcript.slice(0, 120) + "…"
-              : tip.transcript}
-          </div>
+              <div className="text-xs text-slate-500 mb-4 border-t border-slate-100 pt-3">
+                <span className="font-medium text-slate-600">You said: </span>
+                {tip.transcript.length > 120
+                  ? tip.transcript.slice(0, 120) + "…"
+                  : tip.transcript}
+              </div>
 
-          <div className="flex items-center gap-2">
-            <Button
-              className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold gap-2"
-              onClick={handleContinueNow}
-              aria-label={`${continueLabel}${ariaCountdown}`}
-            >
-              {continueLabel}
-              <ChevronRight className="w-4 h-4" aria-hidden="true" />
-            </Button>
-            {showCountdown && (
-              <Button
-                variant="outline"
-                className="text-slate-600 border-slate-300"
-                onClick={handleStay}
-              >
-                Stay
-              </Button>
-            )}
-          </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold gap-2"
+                  onClick={handleContinueNow}
+                  aria-label={`${continueLabel}${ariaCountdown}`}
+                >
+                  {continueLabel}
+                  <ChevronRight className="w-4 h-4" aria-hidden="true" />
+                </Button>
+                {showCountdown && (
+                  <Button
+                    variant="outline"
+                    className="text-slate-700 border-slate-300"
+                    onClick={handleStay}
+                  >
+                    Stay
+                  </Button>
+                )}
+              </div>
 
-          {showCountdown && (
-            <p className="text-xs text-slate-400 mt-2 text-center">
-              Continuing in {secondsLeft}s — hover or focus to pause
-            </p>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+              {showCountdown && (
+                <p
+                  className="text-xs text-slate-500 mt-2 text-center"
+                  aria-live="polite"
+                >
+                  Continuing in {secondsLeft}s — hover or focus to pause
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   );
 }
 

@@ -1,4 +1,5 @@
 import { Switch, Route } from "wouter";
+import { useFocusOnRouteChange } from "./hooks/useFocusOnRouteChange";
 import Landing from "./pages/landing";
 import Consent from "./pages/consent";
 import Onboarding from "./pages/onboarding";
@@ -10,6 +11,7 @@ import History from "./pages/history";
 import NotFound from "./pages/not-found";
 
 export default function App() {
+  useFocusOnRouteChange();
   return (
     <Switch>
       <Route path="/" component={Landing} />

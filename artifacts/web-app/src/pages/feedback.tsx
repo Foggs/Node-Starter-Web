@@ -44,14 +44,43 @@ function emotionColor(score: number): string {
   return "#ef4444";
 }
 
+function emotionLabel(score: number): string {
+  if (score <= 3) return "calm";
+  if (score <= 6) return "unsettled";
+  return "distressed";
+}
+
 function EmotionArcChart({ emotionArc }: { emotionArc: number[] }) {
   const data = emotionArc.map((score, i) => ({ turn: `T${i + 1}`, score }));
   const avg = Math.round(
     emotionArc.reduce((a, b) => a + b, 0) / emotionArc.length,
   );
+  const peak = Math.max(...emotionArc);
+  const low = Math.min(...emotionArc);
+  const first = emotionArc[0];
+  const last = emotionArc[emotionArc.length - 1];
+  const trend =
+    last < first - 1
+      ? "decreased"
+      : last > first + 1
+        ? "increased"
+        : "stayed roughly steady";
+
+  const turnSummary = emotionArc
+    .map(
+      (s, i) =>
+        `Turn ${i + 1}: ${s} out of 10 (${emotionLabel(s)})`,
+    )
+    .join("; ");
+
+  const summary = `Employee emotional intensity across ${emotionArc.length} turn${emotionArc.length !== 1 ? "s" : ""}. Average ${avg} out of 10. Peak ${peak}, low ${low}. Intensity ${trend} from start to end. ${turnSummary}.`;
 
   return (
-    <div>
+    <div
+      role="img"
+      aria-label={`Emotion arc chart. ${summary}`}
+    >
+      <p className="sr-only">{summary}</p>
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs text-slate-500">
           Employee emotional intensity across your turns
