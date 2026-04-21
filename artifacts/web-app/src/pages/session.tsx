@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import {
   Mic,
@@ -11,12 +11,23 @@ import {
   RotateCcw,
   Volume2,
   SkipForward,
+  Send,
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   ApiError,
   getGetSessionQueryKey,
@@ -47,6 +58,7 @@ type Phase =
   | { tag: "fetching_employee"; turnNum: number }
   | { tag: "employee"; turnNum: number; text: string }
   | { tag: "recording"; turnNum: number }
+  | { tag: "reviewing"; turnNum: number; text: string; blob: Blob }
   | { tag: "processing"; turnNum: number }
   | { tag: "coaching_tip"; turnNum: number; tip: CoachingTipData }
   | { tag: "complete" };
@@ -219,6 +231,13 @@ function TypingIndicator() {
 
 // ─── CoachingTipOverlay ───────────────────────────────────────────────────────
 
+const AUTO_ADVANCE_SECONDS = 8;
+
+function prefersReducedMotion(): boolean {
+  if (typeof window === "undefined" || !window.matchMedia) return false;
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
 interface CoachingTipOverlayProps {
   tip: CoachingTipData;
   turnNum: number;
@@ -227,12 +246,96 @@ interface CoachingTipOverlayProps {
 
 function CoachingTipOverlay({ tip, turnNum, onContinue }: CoachingTipOverlayProps) {
   const isLastTurn = turnNum >= 5;
+  const reducedMotion = useMemo(() => prefersReducedMotion(), []);
+  const [secondsLeft, setSecondsLeft] = useState<number | null>(
+    reducedMotion ? null : AUTO_ADVANCE_SECONDS,
+  );
+  const pausedRef = useRef(false);
+  const continuedRef = useRef(false);
+
+  // Reset when turn changes
+  useEffect(() => {
+    continuedRef.current = false;
+    setSecondsLeft(reducedMotion ? null : AUTO_ADVANCE_SECONDS);
+  }, [turnNum, reducedMotion]);
+
+  // Tick once per second, pausing while pausedRef is true.
+  useEffect(() => {
+    if (secondsLeft === null) return;
+    if (secondsLeft <= 0) {
+      if (continuedRef.current) return;
+      continuedRef.current = true;
+      onContinue();
+      return;
+    }
+    const id = setTimeout(() => {
+      if (!pausedRef.current) {
+        setSecondsLeft((s) => (s === null ? null : s - 1));
+      }
+    }, 1000);
+    return () => clearTimeout(id);
+  }, [secondsLeft, onContinue]);
+
+  function handleStay() {
+    pausedRef.current = true;
+    setSecondsLeft(null);
+  }
+
+  function handleContinueNow() {
+    if (continuedRef.current) return;
+    continuedRef.current = true;
+    onContinue();
+  }
+
+  // Pause auto-advance while pointer is over the card or focus is inside it.
+  const cardHandlers = {
+    onMouseEnter: () => {
+      pausedRef.current = true;
+    },
+    onMouseLeave: () => {
+      // Only resume if the user hasn't explicitly paused via Stay
+      if (secondsLeft !== null) pausedRef.current = false;
+    },
+    onFocus: () => {
+      pausedRef.current = true;
+    },
+    onBlur: (e: React.FocusEvent) => {
+      // Resume only when focus leaves the card entirely
+      if (
+        e.currentTarget instanceof HTMLElement &&
+        !e.currentTarget.contains(e.relatedTarget as Node) &&
+        secondsLeft !== null
+      ) {
+        pausedRef.current = false;
+      }
+    },
+  };
+
+  const continueLabel = isLastTurn
+    ? "Complete session"
+    : `Turn ${turnNum + 1} of 5`;
+  const showCountdown = secondsLeft !== null && secondsLeft > 0;
+  const ariaCountdown = showCountdown
+    ? ` (auto-advancing in ${secondsLeft} seconds)`
+    : "";
+
   return (
-    <div className="fixed inset-0 bg-slate-900/50 flex items-end sm:items-center justify-center z-50 p-4">
-      <Card className="w-full max-w-lg border-slate-200 shadow-2xl">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="coaching-tip-title"
+      className="fixed inset-0 bg-slate-900/50 flex items-end sm:items-center justify-center z-50 p-4"
+    >
+      <Card
+        className="w-full max-w-lg border-slate-200 shadow-2xl"
+        {...cardHandlers}
+      >
         <CardContent className="pt-5 pb-5">
           <div className="flex items-center justify-between mb-3">
-            <p className="text-xs font-semibold text-amber-600 uppercase tracking-wider">
+            <p
+              id="coaching-tip-title"
+              className="text-xs font-semibold text-amber-600 uppercase tracking-wider"
+            >
               Turn {turnNum} coaching
             </p>
             <EmotionBadge score={tip.emotionScore} />
@@ -249,15 +352,99 @@ function CoachingTipOverlay({ tip, turnNum, onContinue }: CoachingTipOverlayProp
               : tip.transcript}
           </div>
 
-          <Button
-            className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold gap-2"
-            onClick={onContinue}
-          >
-            {isLastTurn ? "Complete session" : `Turn ${turnNum + 1} of 5`}
-            <ChevronRight className="w-4 h-4" />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold gap-2"
+              onClick={handleContinueNow}
+              aria-label={`${continueLabel}${ariaCountdown}`}
+            >
+              {continueLabel}
+              <ChevronRight className="w-4 h-4" aria-hidden="true" />
+            </Button>
+            {showCountdown && (
+              <Button
+                variant="outline"
+                className="text-slate-600 border-slate-300"
+                onClick={handleStay}
+              >
+                Stay
+              </Button>
+            )}
+          </div>
+
+          {showCountdown && (
+            <p className="text-xs text-slate-400 mt-2 text-center">
+              Continuing in {secondsLeft}s — hover or focus to pause
+            </p>
+          )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+// ─── RecordingPreview ─────────────────────────────────────────────────────────
+
+interface RecordingPreviewProps {
+  blob: Blob;
+  isSubmitting?: boolean;
+  onSubmit: () => void;
+  onRedo: () => void;
+}
+
+function RecordingPreview({
+  blob,
+  isSubmitting,
+  onSubmit,
+  onRedo,
+}: RecordingPreviewProps) {
+  const [url, setUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    const objectUrl = URL.createObjectURL(blob);
+    setUrl(objectUrl);
+    return () => URL.revokeObjectURL(objectUrl);
+  }, [blob]);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center gap-2">
+        {url && (
+          <audio
+            controls
+            src={url}
+            className="flex-1 h-10"
+            aria-label="Preview your recording"
+          />
+        )}
+      </div>
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          className="flex-1 gap-2 text-slate-700 border-slate-300"
+          onClick={onRedo}
+          disabled={isSubmitting}
+        >
+          <RotateCcw className="w-4 h-4" aria-hidden="true" />
+          Re-record
+        </Button>
+        <Button
+          className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold gap-2"
+          onClick={onSubmit}
+          disabled={isSubmitting}
+          aria-busy={isSubmitting || undefined}
+        >
+          {isSubmitting ? (
+            <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
+          ) : (
+            <Send className="w-4 h-4" aria-hidden="true" />
+          )}
+          {isSubmitting ? "Submitting…" : "Submit response"}
+        </Button>
+      </div>
+      <p className="text-xs text-slate-400 text-center">
+        Listen back, then submit — or re-record if you'd like to try again.
+      </p>
     </div>
   );
 }
@@ -398,6 +585,8 @@ export default function Session() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase.tag === "fetching_employee" ? phase.turnNum : null, retryKey, sessionReady]);
 
+  const autoRecordTriggeredRef = useRef<number | null>(null);
+
   // ── synthesize & auto-play employee voice when entering employee phase ──
   useEffect(() => {
     if (phase.tag !== "employee") return;
@@ -479,45 +668,8 @@ export default function Session() {
       recorder.onstop = () => {
         stream.getTracks().forEach((t) => t.stop());
         const blob = new Blob(chunksRef.current, { type: "audio/webm" });
-        setPhase({ tag: "processing", turnNum });
-
-        coachingTipMutation.mutate(
-          { data: { audio: blob, turnIndex: turnNum } },
-          {
-            onSuccess: (data) => {
-              // Add the employee turn that just finished speaking
-              const employeeTurn: CompletedTurn = {
-                role: "employee",
-                turnNum,
-                text,
-              };
-              // Add the manager turn with its coaching context
-              const managerTurn: CompletedTurn = {
-                role: "manager",
-                turnNum,
-                text: data.transcript,
-                coachingTip: data.coachingTip,
-                emotionScore: data.emotionScore,
-              };
-              const updated = [...completedTurns, employeeTurn, managerTurn];
-              setCompletedTurns(updated);
-              saveCheckpoint(updated);
-              setPhase({
-                tag: "coaching_tip",
-                turnNum,
-                tip: {
-                  transcript: data.transcript,
-                  coachingTip: data.coachingTip,
-                  emotionScore: data.emotionScore,
-                },
-              });
-            },
-            onError: () => {
-              // Return to employee phase so the manager can retry
-              setPhase({ tag: "employee", turnNum, text });
-            },
-          },
-        );
+        // Move to reviewing — user can preview, re-record, or submit.
+        setPhase({ tag: "reviewing", turnNum, text, blob });
       };
 
       recorderRef.current = recorder;
@@ -529,11 +681,81 @@ export default function Session() {
         "Microphone access is required. Please allow microphone permission and try again.",
       );
     }
-  }, [phase, completedTurns, coachingTipMutation]);
+  }, [phase]);
 
   function stopRecording() {
     recorderRef.current?.stop();
     recorderRef.current = null;
+  }
+
+  // ── auto-start recording once the employee voice has finished ──
+  // Mic permission is already granted at this point (the Voice onboarding
+  // step required it). This drops one explicit click per turn.
+  useEffect(() => {
+    if (phase.tag !== "employee") return;
+    if (voiceFetching) return;
+    if (player.playbackState === "loading" || player.playbackState === "playing")
+      return;
+    if (autoRecordTriggeredRef.current === phase.turnNum) return;
+    autoRecordTriggeredRef.current = phase.turnNum;
+    const id = setTimeout(() => {
+      startRecording();
+    }, 350);
+    return () => clearTimeout(id);
+  }, [phase, voiceFetching, player.playbackState, startRecording]);
+
+  function submitRecording() {
+    if (phase.tag !== "reviewing") return;
+    const { turnNum, text, blob } = phase;
+    setPhase({ tag: "processing", turnNum });
+
+    coachingTipMutation.mutate(
+      { data: { audio: blob, turnIndex: turnNum } },
+      {
+        onSuccess: (data) => {
+          const employeeTurn: CompletedTurn = {
+            role: "employee",
+            turnNum,
+            text,
+          };
+          const managerTurn: CompletedTurn = {
+            role: "manager",
+            turnNum,
+            text: data.transcript,
+            coachingTip: data.coachingTip,
+            emotionScore: data.emotionScore,
+          };
+          const updated = [...completedTurns, employeeTurn, managerTurn];
+          setCompletedTurns(updated);
+          saveCheckpoint(updated);
+          setPhase({
+            tag: "coaching_tip",
+            turnNum,
+            tip: {
+              transcript: data.transcript,
+              coachingTip: data.coachingTip,
+              emotionScore: data.emotionScore,
+            },
+          });
+        },
+        onError: () => {
+          // Return to reviewing so the user can retry submission or re-record
+          setPhase({ tag: "reviewing", turnNum, text, blob });
+          setFetchError(
+            "We couldn't analyse that response. Try submitting again or re-record.",
+          );
+        },
+      },
+    );
+  }
+
+  function redoRecording() {
+    if (phase.tag !== "reviewing") return;
+    const { turnNum, text } = phase;
+    setFetchError(null);
+    // Reset so auto-start fires again on this turn.
+    autoRecordTriggeredRef.current = null;
+    setPhase({ tag: "employee", turnNum, text });
   }
 
   function handleContinueAfterTip() {
@@ -546,6 +768,7 @@ export default function Session() {
     }
   }
 
+  const [endConfirmOpen, setEndConfirmOpen] = useState(false);
   function handleEndSession() {
     clearCheckpoint();
     navigate("/");
@@ -614,7 +837,13 @@ export default function Session() {
               variant="ghost"
               size="sm"
               className="text-slate-400 hover:text-slate-700 gap-1"
-              onClick={handleEndSession}
+              onClick={() => {
+                if (completedManagerTurns > 0) {
+                  setEndConfirmOpen(true);
+                } else {
+                  handleEndSession();
+                }
+              }}
             >
               <X className="w-3.5 h-3.5" /> End
             </Button>
@@ -711,6 +940,18 @@ export default function Session() {
             </div>
           )}
 
+          {phase.tag === "reviewing" && (
+            <div className="flex gap-3 flex-row-reverse">
+              <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center shrink-0 text-xs font-bold text-slate-950">
+                M
+              </div>
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3 flex items-center gap-2 text-sm text-amber-800">
+                <Volume2 className="w-4 h-4" />
+                Listen back below
+              </div>
+            </div>
+          )}
+
           {phase.tag === "processing" && (
             <div className="flex gap-3 flex-row-reverse">
               <div className="w-8 h-8 rounded-full bg-amber-500 flex items-center justify-center shrink-0 text-xs font-bold text-slate-950">
@@ -766,15 +1007,18 @@ export default function Session() {
 
               {phase.tag === "employee" && !voiceActive && (
                 <div className="flex flex-col items-center gap-2">
+                  {/* Auto-start will fire shortly; show a manual fallback in
+                      case mic permission was revoked since onboarding. */}
                   <Button
                     size="lg"
-                    className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold gap-2"
+                    variant="outline"
+                    className="w-full text-slate-700 border-slate-300 gap-2"
                     onClick={startRecording}
                   >
-                    <Mic className="w-4 h-4" /> Record Your Response
+                    <Mic className="w-4 h-4" /> Start Recording
                   </Button>
                   <p className="text-xs text-slate-400">
-                    Press record when you're ready to respond
+                    Recording will start automatically — or press to start now
                   </p>
                 </div>
               )}
@@ -792,6 +1036,15 @@ export default function Session() {
                     Press stop when you've finished speaking
                   </p>
                 </div>
+              )}
+
+              {phase.tag === "reviewing" && (
+                <RecordingPreview
+                  blob={phase.blob}
+                  isSubmitting={coachingTipMutation.isPending}
+                  onSubmit={submitRecording}
+                  onRedo={redoRecording}
+                />
               )}
 
               {phase.tag === "processing" && (
@@ -820,6 +1073,28 @@ export default function Session() {
           onContinue={handleContinueAfterTip}
         />
       )}
+
+      {/* End confirmation */}
+      <AlertDialog open={endConfirmOpen} onOpenChange={setEndConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>End session and lose progress?</AlertDialogTitle>
+            <AlertDialogDescription>
+              You've completed {completedManagerTurns} of 5 turns. Ending now
+              clears this session — you'll start fresh from turn 1 next time.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Keep going</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleEndSession}
+              className="bg-red-500 hover:bg-red-400 text-white"
+            >
+              End session
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </AppShell>
   );
 }
