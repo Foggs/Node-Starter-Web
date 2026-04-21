@@ -233,11 +233,6 @@ function TypingIndicator() {
 
 const AUTO_ADVANCE_SECONDS = 8;
 
-function prefersReducedMotion(): boolean {
-  if (typeof window === "undefined" || !window.matchMedia) return false;
-  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-}
-
 interface CoachingTipOverlayProps {
   tip: CoachingTipData;
   turnNum: number;
@@ -246,9 +241,8 @@ interface CoachingTipOverlayProps {
 
 function CoachingTipOverlay({ tip, turnNum, onContinue }: CoachingTipOverlayProps) {
   const isLastTurn = turnNum >= 5;
-  const reducedMotion = useMemo(() => prefersReducedMotion(), []);
   const [secondsLeft, setSecondsLeft] = useState<number | null>(
-    reducedMotion ? null : AUTO_ADVANCE_SECONDS,
+    AUTO_ADVANCE_SECONDS,
   );
   const pausedRef = useRef(false);
   const continuedRef = useRef(false);
@@ -256,8 +250,8 @@ function CoachingTipOverlay({ tip, turnNum, onContinue }: CoachingTipOverlayProp
   // Reset when turn changes
   useEffect(() => {
     continuedRef.current = false;
-    setSecondsLeft(reducedMotion ? null : AUTO_ADVANCE_SECONDS);
-  }, [turnNum, reducedMotion]);
+    setSecondsLeft(AUTO_ADVANCE_SECONDS);
+  }, [turnNum]);
 
   // Tick once per second, pausing while pausedRef is true.
   useEffect(() => {
@@ -837,13 +831,7 @@ export default function Session() {
               variant="ghost"
               size="sm"
               className="text-slate-400 hover:text-slate-700 gap-1"
-              onClick={() => {
-                if (completedManagerTurns > 0) {
-                  setEndConfirmOpen(true);
-                } else {
-                  handleEndSession();
-                }
-              }}
+              onClick={() => setEndConfirmOpen(true)}
             >
               <X className="w-3.5 h-3.5" /> End
             </Button>
