@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { Router, type IRouter } from "express";
 import multer from "multer";
 import { sessionGuard } from "../middlewares/sessionGuard.js";
+import { checkSessionReady } from "../middlewares/sessionReady.js";
 import { llmRateLimit } from "../middlewares/rateLimits.js";
 import { transcribeAudio, chatCompletion } from "../lib/openai.js";
 import { sanitizeTranscript } from "../lib/sanitize.js";
@@ -163,18 +164,9 @@ router.post(
   "/coaching-tip",
   llmRateLimit,
   sessionGuard,
+  checkSessionReady,
   upload.single("audio"),
   async (req, res) => {
-    const readiness = checkSessionReady(req.session);
-    if (!readiness.valid) {
-      res.status(400).json({
-        error:
-          "Onboarding incomplete — please complete all required steps before starting a session",
-        missingStep: readiness.missingStep,
-      });
-      return;
-    }
-
     if (!req.file) {
       res.status(400).json({ error: "No audio file provided" });
       return;
@@ -240,51 +232,9 @@ router.post(
   },
 );
 
-// ─── session-readiness gate ───────────────────────────────────────────────────
-
-/**
- * Validates the full ordered onboarding chain before allowing session actions.
- * Returns `{ valid: true }` when all four steps are complete, or
- * `{ valid: false, missingStep: 1|2|3|4 }` at the first incomplete step.
- *
- * Steps:
- *  1 = Biometric consent
- *  2 = Scenario selection
- *  3 = Persona selection
- *  4 = Voice step (clone succeeded OR generic-voice fallback was taken)
- */
-function checkSessionReady(session: {
-  consent_given?: boolean;
-  scenario?: string;
-  persona?: string;
-  voice_id?: string;
-  voice_cloned?: boolean;
-}): { valid: true } | { valid: false; missingStep: 1 | 2 | 3 | 4 } {
-  if (!session.consent_given) return { valid: false, missingStep: 1 };
-  if (!session.scenario) return { valid: false, missingStep: 2 };
-  if (!session.persona) return { valid: false, missingStep: 3 };
-  // Voice step is complete when voice_id is set (clone success) OR
-  // voice_cloned has been explicitly set to false (fallback taken).
-  // An undefined voice_cloned means the step was never reached.
-  const voiceStepDone =
-    Boolean(session.voice_id) || session.voice_cloned === false;
-  if (!voiceStepDone) return { valid: false, missingStep: 4 };
-  return { valid: true };
-}
-
 // ─── POST /api/employee-turn ──────────────────────────────────────────────────
 
-router.post("/employee-turn", llmRateLimit, sessionGuard, async (req, res) => {
-  const readiness = checkSessionReady(req.session);
-  if (!readiness.valid) {
-    res.status(400).json({
-      error:
-        "Onboarding incomplete — please complete all required steps before starting a session",
-      missingStep: readiness.missingStep,
-    });
-    return;
-  }
-
+router.post("/employee-turn", llmRateLimit, sessionGuard, checkSessionReady, async (req, res) => {
   const turns = req.session.turns ?? [];
   const managerTurnCount = turns.filter((t) => t.role === "manager").length;
 
@@ -372,17 +322,8 @@ router.post(
   "/improved-replay",
   llmRateLimit,
   sessionGuard,
+  checkSessionReady,
   async (req, res) => {
-    const readiness = checkSessionReady(req.session);
-    if (!readiness.valid) {
-      res.status(400).json({
-        error:
-          "Onboarding incomplete — please complete all required steps before starting a session",
-        missingStep: readiness.missingStep,
-      });
-      return;
-    }
-
     const allTurns = req.session.turns ?? [];
     const managerTurns = allTurns
       .filter((t) => t.role === "manager")
@@ -580,17 +521,7 @@ function parseFeedbackResponse(raw: string): {
 
 // ─── POST /api/feedback-summary ──────────────────────────────────────────────
 
-router.post("/feedback-summary", llmRateLimit, sessionGuard, async (req, res) => {
-  const readiness = checkSessionReady(req.session);
-  if (!readiness.valid) {
-    res.status(400).json({
-      error:
-        "Onboarding incomplete — please complete all required steps before starting a session",
-      missingStep: readiness.missingStep,
-    });
-    return;
-  }
-
+router.post("/feedback-summary", llmRateLimit, sessionGuard, checkSessionReady, async (req, res) => {
   const turns = req.session.turns ?? [];
   const managerTurns = turns.filter((t) => t.role === "manager");
 

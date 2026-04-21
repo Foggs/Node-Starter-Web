@@ -1,0 +1,240 @@
+Use the agent-skills workflows and personas for this task:
+- /plan   → map all routes that need the gate before touching code
+- /build  → extract and wire incrementally, one route at a time
+- /review → five-axis code-reviewer audit before closing
+
+---
+
+## Task #25: Move session-readiness check into shared middleware
+
+## Problem
+
+checkSessionReady is currently defined inside
+artifacts/api-server/src/routes/coaching.ts. As more routes
+need the same gate, each either duplicates the logic or imports
+it from an unrelated file. This creates drift risk — if the
+readiness logic needs to change (e.g. adding sub_type to the
+required fields), it has to be found and updated in multiple
+places.
+
+---
+
+## Activate: test-engineer persona — Prove-It baseline FIRST
+
+You are a QA Engineer applying the Prove-It pattern.
+STOP. Do not move any code yet.
+
+Create file: tests/middleware/sessionReady.test.ts
+
+Paste this test exactly as written — do not modify it:
+
+describe('sessionReady middleware', () => {
+  it('FAILS: checkSessionReady is not importable from a
+     dedicated middleware path', () => {
+    // This import should fail today — proves the function
+    // does not yet exist in the middleware location
+    expect(() => {
+      require('../src/middlewares/sessionReady')
+    }).not.toThrow()
+  })
+})
+
+Run this test and confirm it FAILS before writing a single
+line of implementation code. Paste the failing output as a
+comment in the file. This is the Prove-It baseline.
+
+Additional tests to write after the baseline fails:
+
+Test 2: Middleware calls next() when session has all required
+        fields: consent_given, scenario, persona, and either
+        a valid voice_id OR voice_cloned === false
+
+Test 3: Middleware returns 401 when session is missing
+        consent_given
+
+Test 4: Middleware returns 401 when session has consent but
+        no scenario
+
+Test 5: Middleware returns 401 when session has consent +
+        scenario but no persona
+
+Test 6: Middleware returns 401 when session has consent +
+        scenario + persona but voice_id is undefined AND
+        voice_cloned is not explicitly false
+
+Test 7: Middleware returns 401 when no session exists at all
+
+Test 8: All gated routes in coaching.ts respond 401 to a
+        request with an empty session (integration-level —
+        use supertest against the Express app)
+
+All tests must FAIL before implementation begins.
+All tests must PASS before the code-reviewer pass begins.
+
+---
+
+## Incremental implementation plan (follow this order)
+
+**Slice 1 — Audit current usage**
+- Find every location in the codebase that calls or duplicates
+  checkSessionReady or an equivalent session gate check
+- List each file, line number, and what fields it checks
+- Do not change any code in this slice
+- Document findings as a comment block at the top of the
+  new middleware file before writing any logic
+
+**Slice 2 — Create the middleware file**
+
+Create: artifacts/api-server/src/middlewares/sessionReady.ts
+
+The middleware must:
+- Be a standard Express RequestHandler signature:
+  (req, res, next) => void
+- Check fields in this exact order:
+    1. Session exists
+    2. consent_given === true
+    3. scenario is set and is a known enum value
+    4. persona is set and is a known enum value
+    5. voice_id is set OR voice_cloned === false
+- On any failure: return res.status(401).json({
+    error: 'Session not ready',
+    missing: '<first missing field name>'
+  })
+- On success: call next()
+- Export as named export: checkSessionReady
+- Export the required fields list as a separate named export:
+  SESSION_REQUIRED_FIELDS
+  so callers can introspect what the gate requires without
+  reading the implementation
+
+**Slice 3 — Update coaching.ts**
+- Remove the local checkSessionReady definition
+- Import checkSessionReady from
+  ../middlewares/sessionReady
+- Wire it to all routes that previously used the local version
+- Verify the file has no remaining local session-gate logic
+
+**Slice 4 — Audit all other gated routes**
+- For every other route file identified in Slice 1 that
+  duplicates or partially duplicates the gate:
+  - Remove the local logic
+  - Import and apply the shared middleware
+- Do not change any route logic beyond the middleware wiring
+
+**Slice 5 — Run the full test suite**
+- Re-run all 8 tests from the Prove-It suite
+- All 8 must pass before proceeding to review
+- If any test fails, fix before proceeding — do not skip
+
+---
+
+## Activate: code-reviewer persona
+
+You are a Staff Engineer. Apply five-axis review to the
+middleware and all updated route files:
+
+1. Correctness — Does the middleware enforce the exact field
+   chain in the right order? Does it correctly handle the
+   voice_cloned: false fallback as a valid terminal state?
+   Does it return the right status code (401 not 403)?
+   Is the missing field name surfaced in the error response?
+
+2. Readability — Is the middleware self-documenting?
+   Could another engineer understand what "session ready"
+   means without reading the onboarding flow? Is
+   SESSION_REQUIRED_FIELDS useful and accurate?
+
+3. Architecture — Is there a single source of truth for
+   the readiness definition? If sub_type is added to
+   required session fields in future, is there exactly
+   one place to update? Is the middleware in the right
+   directory per the project's existing conventions?
+
+4. Security — Is the middleware applied to every route
+   that was previously gated? Are there any routes that
+   handle sensitive operations (voice, coaching, replay,
+   export) that are now ungated by mistake? Cross-check
+   against the API endpoint list in the SDD.
+
+5. Edge cases — What happens if req.session exists but
+   is malformed (e.g. fields present but wrong type)?
+   What if voice_id is an empty string rather than
+   undefined? What if scenario is a valid string but
+   not a known enum value?
+
+Flag issues as: Blocker / Optional / Nit
+No Blockers may remain open when the task closes.
+
+---
+
+## Activate: security-auditor persona
+
+After the code-reviewer pass, audit specifically for
+gate coverage regression:
+
+Cross-check every endpoint in this list against the
+updated route files and confirm the middleware is applied:
+
+- POST /api/coaching-tip        → must be gated
+- POST /api/improved-replay     → must be gated
+- POST /api/feedback-summary    → must be gated
+- POST /api/export-report       → must be gated
+- GET  /api/audio/:turnId       → must be gated
+- GET  /api/voice/preview       → must be gated
+
+These endpoints must NOT be gated (they operate before
+session is ready):
+- POST /api/consent             → ungated
+- POST /api/clone-voice         → ungated (consent checked
+                                   separately)
+- GET  /api/scenarios           → ungated
+- GET  /api/personas            → ungated
+- GET  /api/ping                → ungated
+
+Report any endpoint that is incorrectly gated or
+incorrectly ungated as: Critical
+
+---
+
+## Constraints
+- The middleware logic must be identical to the current
+  checkSessionReady behavior — this is a refactor only,
+  no logic changes
+- Do not change any route handler logic beyond swapping
+  the middleware reference
+- The middleware file must live at:
+  artifacts/api-server/src/middlewares/sessionReady.ts
+- Run `pnpm run typecheck` after Slice 5
+
+---
+
+## Acceptance checklist
+
+### Prove-It (test-engineer)
+- [ ] Test file created at
+      tests/middleware/sessionReady.test.ts
+- [ ] Baseline test confirmed FAILING before any code change
+- [ ] Failing test output pasted as comment in test file
+- [ ] All 8 tests passing after implementation
+
+### Implementation
+- [ ] checkSessionReady exported from
+      artifacts/api-server/src/middlewares/sessionReady.ts
+- [ ] SESSION_REQUIRED_FIELDS exported from same file
+- [ ] coaching.ts imports from middleware, no local definition
+- [ ] All other routes identified in Slice 1 updated
+- [ ] No local session gate logic remains in any route file
+
+### Security audit
+- [ ] All 6 gated endpoints confirmed gated
+- [ ] All 5 ungated endpoints confirmed ungated
+- [ ] Zero Critical findings from security-auditor
+
+### Code review
+- [ ] No Blockers flagged
+- [ ] Single source of truth for session readiness confirmed
+- [ ] voice_cloned: false correctly passes as valid voice state
+- [ ] Malformed session fields handled gracefully
+
+### Final gate
+- [ ] `pnpm run typecheck` passes with no errors
