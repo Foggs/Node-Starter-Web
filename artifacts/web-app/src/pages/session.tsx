@@ -39,6 +39,7 @@ import {
 } from "@workspace/api-client-react";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { categorizeMicError } from "@/lib/micErrors";
+import { cn } from "@/lib/utils";
 import {
   useListScenarios,
   useListPersonas,
@@ -259,24 +260,45 @@ function TypingIndicator() {
 const AUTO_ADVANCE_SECONDS = 8;
 
 interface CoachingTipOverlayProps {
-  tip: CoachingTipData;
-  turnNum: number;
+  /** Drives Radix open state — must be controlled so Radix can play the
+   *  exit animation before unmounting (parent keeps this component mounted). */
+  open: boolean;
+  /** Null while closed; the overlay caches the last non-null value so its
+   *  content stays visible during the close animation. */
+  tip: CoachingTipData | null;
+  turnNum: number | null;
   onContinue: () => void;
 }
 
-function CoachingTipOverlay({ tip, turnNum, onContinue }: CoachingTipOverlayProps) {
-  const isLastTurn = turnNum >= 5;
+function CoachingTipOverlay({
+  open,
+  tip,
+  turnNum,
+  onContinue,
+}: CoachingTipOverlayProps) {
+  // Cache last shown values so the dialog content remains rendered during
+  // the close transition (when `tip` / `turnNum` have already gone null).
+  const [shown, setShown] = useState<{ tip: CoachingTipData; turnNum: number } | null>(
+    tip != null && turnNum != null ? { tip, turnNum } : null,
+  );
+  useEffect(() => {
+    if (tip != null && turnNum != null) setShown({ tip, turnNum });
+  }, [tip, turnNum]);
+
+  const liveTurnNum = shown?.turnNum ?? 0;
+  const isLastTurn = liveTurnNum >= 5;
   const [secondsLeft, setSecondsLeft] = useState<number | null>(
     AUTO_ADVANCE_SECONDS,
   );
   const pausedRef = useRef(false);
   const continuedRef = useRef(false);
 
-  // Reset when turn changes
+  // Reset when turn changes (use the live shown turn — `turnNum` may briefly
+  // go null while the close animation plays).
   useEffect(() => {
     continuedRef.current = false;
     setSecondsLeft(AUTO_ADVANCE_SECONDS);
-  }, [turnNum]);
+  }, [liveTurnNum]);
 
   // Tick once per second, pausing while pausedRef is true.
   useEffect(() => {
@@ -332,25 +354,40 @@ function CoachingTipOverlay({ tip, turnNum, onContinue }: CoachingTipOverlayProp
 
   const continueLabel = isLastTurn
     ? "Complete session"
-    : `Turn ${turnNum + 1} of 5`;
+    : `Turn ${liveTurnNum + 1} of 5`;
   const showCountdown = secondsLeft !== null && secondsLeft > 0;
   const ariaCountdown = showCountdown
     ? ` (auto-advancing in ${secondsLeft} seconds)`
     : "";
 
+  // Don't mount Radix until we've ever had a tip — avoids an empty Portal.
+  if (!shown) return null;
+  const liveTip = shown.tip;
+
   // Use Radix Dialog primitive directly so we get a focus trap, focus
   // restoration to the previously focused element, and Escape handling — but
   // without shadcn's built-in close button (this overlay only exits via
   // Continue or auto-advance).
+  //
+  // `open` is controlled by the parent: when it flips to false Radix's
+  // Presence keeps Overlay/Content mounted long enough for the
+  // `data-[state=closed]:animate-out` exit animations to play, then unmounts.
   return (
     <DialogPrimitive.Root
-      open
-      onOpenChange={(open) => {
-        if (!open) handleContinueNow();
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) handleContinueNow();
       }}
     >
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-slate-900/50 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:duration-150 motion-reduce:animate-none" />
+        <DialogPrimitive.Overlay
+          className={cn(
+            "fixed inset-0 z-50 bg-slate-900/50",
+            "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:duration-150",
+            "data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:duration-150",
+            "motion-reduce:animate-none",
+          )}
+        />
         <DialogPrimitive.Content
           aria-describedby={undefined}
           // Only Continue button or auto-advance should dismiss this overlay.
@@ -358,7 +395,12 @@ function CoachingTipOverlay({ tip, turnNum, onContinue }: CoachingTipOverlayProp
           // don't lose the coaching tip by tapping anywhere on the page.
           onPointerDownOutside={(e) => e.preventDefault()}
           onInteractOutside={(e) => e.preventDefault()}
-          className="fixed left-[50%] top-auto bottom-4 sm:top-[50%] sm:bottom-auto z-50 translate-x-[-50%] sm:translate-y-[-50%] w-[calc(100%-2rem)] max-w-lg outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-bottom-4 data-[state=open]:duration-200 motion-reduce:animate-none"
+          className={cn(
+            "fixed left-[50%] top-auto bottom-4 sm:top-[50%] sm:bottom-auto z-50 translate-x-[-50%] sm:translate-y-[-50%] w-[calc(100%-2rem)] max-w-lg outline-none",
+            "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-bottom-4 data-[state=open]:duration-200",
+            "data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:slide-out-to-bottom-4 data-[state=closed]:duration-150",
+            "motion-reduce:animate-none",
+          )}
         >
           <Card
             className="w-full border-slate-200 shadow-2xl"
@@ -370,20 +412,20 @@ function CoachingTipOverlay({ tip, turnNum, onContinue }: CoachingTipOverlayProp
                   id="coaching-tip-title"
                   className="text-xs font-semibold text-amber-700 uppercase tracking-wider"
                 >
-                  Turn {turnNum} coaching
+                  Turn {liveTurnNum} coaching
                 </DialogPrimitive.Title>
-                <EmotionBadge score={tip.emotionScore} />
+                <EmotionBadge score={liveTip.emotionScore} />
               </div>
 
               <p className="text-sm leading-relaxed text-slate-700 mb-4">
-                {tip.coachingTip}
+                {liveTip.coachingTip}
               </p>
 
               <div className="text-xs text-slate-500 mb-4 border-t border-slate-100 pt-3">
                 <span className="font-medium text-slate-600">You said: </span>
-                {tip.transcript.length > 120
-                  ? tip.transcript.slice(0, 120) + "…"
-                  : tip.transcript}
+                {liveTip.transcript.length > 120
+                  ? liveTip.transcript.slice(0, 120) + "…"
+                  : liveTip.transcript}
               </div>
 
               <div className="flex items-center gap-2">
@@ -1174,14 +1216,15 @@ export default function Session() {
         )}
       </div>
 
-      {/* Coaching tip overlay */}
-      {phase.tag === "coaching_tip" && (
-        <CoachingTipOverlay
-          tip={phase.tip}
-          turnNum={phase.turnNum}
-          onContinue={handleContinueAfterTip}
-        />
-      )}
+      {/* Coaching tip overlay — always mounted so Radix can play its
+          close animation before unmounting. The overlay caches the last
+          tip/turnNum so its content stays visible during the exit. */}
+      <CoachingTipOverlay
+        open={phase.tag === "coaching_tip"}
+        tip={phase.tag === "coaching_tip" ? phase.tip : null}
+        turnNum={phase.tag === "coaching_tip" ? phase.turnNum : null}
+        onContinue={handleContinueAfterTip}
+      />
 
       {/* End confirmation */}
       <AlertDialog open={endConfirmOpen} onOpenChange={setEndConfirmOpen}>
