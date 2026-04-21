@@ -34,7 +34,7 @@ const SCENARIOS = [
 
 export default function Landing() {
   return (
-    <div className="min-h-screen bg-slate-950 text-white flex flex-col">
+    <div className="min-h-screen bg-slate-950 text-white flex flex-col page-enter">
       {/* nav */}
       <header className="px-6 py-5 flex items-center justify-between max-w-6xl mx-auto w-full">
         <span className="text-xl font-bold tracking-tight">

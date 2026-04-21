@@ -32,7 +32,7 @@ export default function Consent() {
 
   return (
     <AppShell>
-      <div className="max-w-2xl mx-auto">
+      <div className="max-w-2xl mx-auto page-enter">
         <div className="flex items-center gap-3 mb-8">
           <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
             <ShieldCheck className="w-5 h-5 text-amber-600" />

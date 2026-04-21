@@ -350,7 +350,7 @@ function CoachingTipOverlay({ tip, turnNum, onContinue }: CoachingTipOverlayProp
       }}
     >
       <DialogPrimitive.Portal>
-        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-slate-900/50 data-[state=open]:animate-in data-[state=open]:fade-in-0" />
+        <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-slate-900/50 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:duration-150 motion-reduce:animate-none" />
         <DialogPrimitive.Content
           aria-describedby={undefined}
           // Only Continue button or auto-advance should dismiss this overlay.
@@ -358,7 +358,7 @@ function CoachingTipOverlay({ tip, turnNum, onContinue }: CoachingTipOverlayProp
           // don't lose the coaching tip by tapping anywhere on the page.
           onPointerDownOutside={(e) => e.preventDefault()}
           onInteractOutside={(e) => e.preventDefault()}
-          className="fixed left-[50%] top-auto bottom-4 sm:top-[50%] sm:bottom-auto z-50 translate-x-[-50%] sm:translate-y-[-50%] w-[calc(100%-2rem)] max-w-lg outline-none"
+          className="fixed left-[50%] top-auto bottom-4 sm:top-[50%] sm:bottom-auto z-50 translate-x-[-50%] sm:translate-y-[-50%] w-[calc(100%-2rem)] max-w-lg outline-none data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-bottom-4 data-[state=open]:duration-200 motion-reduce:animate-none"
         >
           <Card
             className="w-full border-slate-200 shadow-2xl"

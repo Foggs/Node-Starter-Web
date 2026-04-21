@@ -275,4 +275,46 @@
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
     inset: -1px;
   }
+
+  /* ── Mic pulse (Voice onboarding) ────────────────────────────────────────
+     Soft scale-up while recording. Driven by amplitude when available via
+     the inline --mic-amp custom property (0–1); falls back to a steady 1.2s
+     pulse via the keyframe when amplitude isn't being updated. */
+  @keyframes mic-pulse-fallback {
+    0%, 100% { transform: scale(1); }
+    50%      { transform: scale(1.06); }
+  }
+  .animate-mic-pulse {
+    transform: scale(calc(1 + (var(--mic-amp, 0) * 0.08)));
+    transition: transform 80ms linear;
+  }
+  .animate-mic-pulse-fallback {
+    animation: mic-pulse-fallback 1.2s ease-in-out infinite;
+  }
+
+  /* ── Page enter transition ───────────────────────────────────────────────
+     Lightweight cross-fade applied to the onboarding-flow pages so route
+     changes don't feel like hard cuts. Distinct from tw-animate-css's
+     `animate-in` class so we can scope the disable rule precisely. */
+  @keyframes page-fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .page-enter {
+    animation: page-fade-in 180ms ease-out both;
+  }
+
+  /* ── Reduced-motion guard ────────────────────────────────────────────────
+     Disable every motion effect introduced by Task #31 when the user has
+     `prefers-reduced-motion: reduce`. State changes still happen instantly
+     so nothing is lost — only the animation is skipped. */
+  @media (prefers-reduced-motion: reduce) {
+    .animate-mic-pulse,
+    .animate-mic-pulse-fallback,
+    .page-enter {
+      animation: none !important;
+      transform: none !important;
+      transition: none !important;
+    }
+  }
 }

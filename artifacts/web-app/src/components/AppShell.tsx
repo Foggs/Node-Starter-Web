@@ -58,6 +58,7 @@ export function AppShell({ children, hideNav = false }: AppShellProps) {
                           aria-current={isCurrent ? "step" : undefined}
                           className={cn(
                             "text-xs font-medium px-2 py-1 rounded",
+                            "transition-colors duration-200 ease-out motion-reduce:transition-none",
                             isCurrent
                               ? "bg-amber-100 text-amber-800"
                               : isComplete

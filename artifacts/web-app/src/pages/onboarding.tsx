@@ -138,17 +138,96 @@ export default function Onboarding() {
   const blobRef = useRef<Blob | null>(null);
   const mimeTypeRef = useRef<string>("");
 
+  // ── amplitude-driven mic pulse ─────────────────────────────────────────────
+  // Drives the live `--mic-amp` CSS var (0–1) on the mic button while
+  // recording, giving the button a subtle scale that follows the speaker's
+  // voice. If AudioContext / AnalyserNode aren't available we silently fall
+  // back to the steady CSS keyframe pulse defined in index.css.
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const analyserRef = useRef<AnalyserNode | null>(null);
+  const rafRef = useRef<number | null>(null);
+  const micButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [hasAmplitude, setHasAmplitude] = useState(false);
+
   // ── voice preview ──────────────────────────────────────────────────────────
   type PreviewState = "idle" | "loading" | "playing" | "error";
   const [previewState, setPreviewState] = useState<PreviewState>("idle");
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Stop mic stream and timer on unmount
+  // Stop mic stream, timer, and audio analyser on unmount
   useEffect(() => {
     return () => {
       timerRef.current && clearInterval(timerRef.current);
       streamRef.current?.getTracks().forEach((t) => t.stop());
+      if (rafRef.current !== null) cancelAnimationFrame(rafRef.current);
+      void audioCtxRef.current?.close().catch(() => {});
     };
+  }, []);
+
+  /** Tear down the analyser + rAF loop and clear the mic-amp CSS var. */
+  const stopAmplitudeLoop = useCallback(() => {
+    if (rafRef.current !== null) {
+      cancelAnimationFrame(rafRef.current);
+      rafRef.current = null;
+    }
+    analyserRef.current = null;
+    if (audioCtxRef.current) {
+      void audioCtxRef.current.close().catch(() => {});
+      audioCtxRef.current = null;
+    }
+    if (micButtonRef.current) {
+      micButtonRef.current.style.removeProperty("--mic-amp");
+    }
+    setHasAmplitude(false);
+  }, []);
+
+  /** Spin up an AnalyserNode for the active stream and start a rAF loop. */
+  const startAmplitudeLoop = useCallback((stream: MediaStream) => {
+    const Ctx =
+      window.AudioContext ||
+      (window as unknown as { webkitAudioContext?: typeof AudioContext })
+        .webkitAudioContext;
+    if (!Ctx) return; // unsupported browser → CSS fallback pulse takes over
+
+    let ctx: AudioContext;
+    try {
+      ctx = new Ctx();
+    } catch {
+      return;
+    }
+    audioCtxRef.current = ctx;
+
+    let analyser: AnalyserNode;
+    try {
+      const source = ctx.createMediaStreamSource(stream);
+      analyser = ctx.createAnalyser();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.7;
+      source.connect(analyser);
+    } catch {
+      void ctx.close().catch(() => {});
+      audioCtxRef.current = null;
+      return;
+    }
+    analyserRef.current = analyser;
+    setHasAmplitude(true);
+
+    const data = new Uint8Array(analyser.fftSize);
+    const tick = () => {
+      if (!analyserRef.current || !micButtonRef.current) return;
+      analyserRef.current.getByteTimeDomainData(data);
+      // Compute simple peak deviation from the 128 mid-line.
+      let peak = 0;
+      for (let i = 0; i < data.length; i++) {
+        const v = Math.abs(data[i] - 128);
+        if (v > peak) peak = v;
+      }
+      // Map 0..~80 (typical talk peak) to 0..1, clamped.
+      const amp = Math.min(1, peak / 80);
+      micButtonRef.current.style.setProperty("--mic-amp", amp.toFixed(3));
+      rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
   }, []);
 
   // ── upload helper ──────────────────────────────────────────────────────────
@@ -203,6 +282,7 @@ export default function Onboarding() {
     recorder.onstop = () => {
       stream.getTracks().forEach((t) => t.stop());
       streamRef.current = null;
+      stopAmplitudeLoop();
 
       const blob = new Blob(chunksRef.current, {
         type: recorder.mimeType || mimeType || "audio/webm",
@@ -215,11 +295,12 @@ export default function Onboarding() {
     recorder.start(250); // collect chunks every 250 ms
     setSeconds(0);
     setPhase("recording");
+    startAmplitudeLoop(stream);
 
     timerRef.current = setInterval(() => {
       setSeconds((s) => s + 1);
     }, 1000);
-  }, [runUpload]);
+  }, [runUpload, startAmplitudeLoop, stopAmplitudeLoop]);
 
   // ── stop recording ─────────────────────────────────────────────────────────
 
@@ -352,7 +433,7 @@ export default function Onboarding() {
 
   return (
     <AppShell>
-      <div className="max-w-xl mx-auto">
+      <div className="max-w-xl mx-auto page-enter">
         {/* Header */}
         <div className="flex items-center gap-3 mb-8">
           <div className="w-10 h-10 rounded-full bg-amber-100 flex items-center justify-center">
@@ -396,6 +477,7 @@ export default function Onboarding() {
             <div className="flex flex-col items-center gap-4 py-4">
               {/* Big mic button */}
               <button
+                ref={micButtonRef}
                 onClick={
                   phase === "idle"
                     ? startRecording
@@ -431,7 +513,9 @@ export default function Onboarding() {
                   phase === "requesting" &&
                     "bg-amber-200 text-slate-400 cursor-wait",
                   phase === "recording" &&
-                    "bg-red-500 hover:bg-red-400 text-white animate-pulse",
+                    (hasAmplitude
+                      ? "bg-red-500 hover:bg-red-400 text-white animate-mic-pulse"
+                      : "bg-red-500 hover:bg-red-400 text-white animate-mic-pulse-fallback"),
                   phase === "uploading" &&
                     "bg-slate-200 text-slate-400 cursor-not-allowed",
                   (phase === "success" || phase === "fallback") &&
