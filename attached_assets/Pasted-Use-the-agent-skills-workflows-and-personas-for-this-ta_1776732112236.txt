@@ -1,0 +1,173 @@
+Use the agent-skills workflows and personas for this task:
+- /plan  → map the session state flow before touching any code
+- /test  → write failing tests first, then verify with passing ones
+- /review → audit the implementation using the code-reviewer persona
+- Then run the security-auditor persona to check for consent bypass 
+  risks before closing the task
+
+---
+
+## Task: Verify session state is set in the correct order
+
+Session state must be populated in this exact sequence before the 
+practice session starts:
+
+  consent_given: true
+       ↓
+  scenario: set
+       ↓
+  persona: set
+       ↓
+  voice_id: set (OR voice_cloned: false for fallback)
+       ↓
+  Practice session allowed to begin
+
+If any step in this chain is missing or out of order, the session 
+must not start and the user must be redirected to the earliest 
+incomplete step.
+
+---
+
+## Activate: test-engineer persona
+
+You are a QA Specialist. Apply the Prove-It pattern:
+reproduce the missing/broken state with a failing test first, 
+then make it pass. Do not write implementation code before the 
+failing test exists.
+
+Write tests that cover every state-order failure case:
+
+**Test suite: Session state gate**
+
+1. Session starts without consent → blocked, redirected to Step 1
+2. Session starts with consent but no scenario → blocked, 
+   redirected to Step 2
+3. Session starts with consent + scenario but no persona → blocked, 
+   redirected to Step 3
+4. Session starts with consent + scenario + persona but no 
+   voice_id AND voice_cloned is not false → blocked, 
+   redirected to Step 4
+5. Session starts with all fields set correctly → allowed through
+6. voice_cloned: false (generic fallback) + all other fields set 
+   → allowed through (fallback is a valid voice state)
+7. consent_given reverts to false mid-flow (e.g. session tamper) 
+   → session invalidated, user returned to Step 1
+
+Each test must assert:
+- The correct blocked/allowed outcome
+- The correct redirect target when blocked
+- That no session data from a prior incomplete state leaks 
+  through to the practice session
+
+---
+
+## Incremental implementation plan (follow this order)
+
+**Slice 1 — Map the current state**
+- Trace how each session field is set today across the 4 onboarding 
+  steps
+- Identify where (if anywhere) the gate check currently exists 
+  before the session starts
+- Document what happens today if a field is missing — does it 
+  error, silently proceed, or redirect?
+- Do not change any code in this slice
+
+**Slice 2 — Write failing tests (test-engineer)**
+- Write the 7 failing tests from the suite above
+- Run them and confirm they all fail before proceeding
+- This is the Prove-It baseline
+
+**Slice 3 — Implement the session state gate**
+- Add a guard function that checks the state chain in order
+- On the "Begin Session" trigger (after Step 4 / voice cloning), 
+  call the guard before starting the ElevenLabs Agent
+- Guard returns: { valid: boolean, redirectTo: stepNumber }
+- If invalid → redirect to the earliest incomplete step
+- If valid → proceed to session start
+
+**Slice 4 — Handle the fallback voice state explicitly**
+- Confirm voice_cloned: false is treated as a valid terminal 
+  voice state (not missing)
+- The guard must distinguish between:
+    "voice step not reached yet" → blocked
+    "voice step completed with fallback" → allowed
+
+**Slice 5 — Run tests (test-engineer)**
+- Re-run the full test suite from Slice 2
+- All 7 tests must pass before proceeding to review
+
+---
+
+## Activate: code-reviewer persona
+
+You are a Staff Engineer conducting a five-axis code review of 
+the session state gate implementation. Evaluate against:
+
+1. **Correctness** — Does the guard enforce the exact chain: 
+   consent → scenario → persona → voice? Are all 7 test cases 
+   handled? Is the fallback voice state correctly distinguished 
+   from a missing voice state?
+
+2. **Readability** — Is the guard function self-documenting? 
+   Can another engineer understand the state chain without 
+   reading the onboarding flow?
+
+3. **Architecture** — Is the guard in the right place? Should 
+   it live client-side, server-side (/api/session), or both? 
+   Is there a single source of truth for what "ready to start" 
+   means?
+
+4. **Security** — Can the guard be bypassed by direct URL 
+   navigation to the session route? Is server-side session 
+   validation enforcing the same chain as the client-side guard?
+
+5. **Edge cases** — What happens if the session expires mid-flow? 
+   What if the ElevenLabs clone succeeds but voice_id is never 
+   written to the session? What if the user hits Back from Step 4 
+   and changes their persona — is the state correctly reset?
+
+Flag any issues as: Blocker / Optional / Nit
+
+---
+
+## Activate: security-auditor persona
+
+You are a Security Engineer. After the code-reviewer pass, 
+audit specifically for consent bypass risk:
+
+- Can a user reach the practice session without consent_given: true 
+  in the server-side session?
+- Is consent validated server-side on POST /api/coaching-tip and 
+  POST /api/improved-replay, or only client-side?
+- If a user clears sessionStorage and navigates directly to /session, 
+  what happens?
+- Is there any route that starts ElevenLabs Agent activity before 
+  consent is confirmed server-side?
+
+Report findings as: Critical / High / Medium / Low
+Any Critical or High finding must be fixed before the task closes.
+
+---
+
+## Constraints
+- Guard logic must be consistent between client and server — 
+  client redirects for UX, server enforces for security
+- No changes to the session state shape or field names
+- No changes to the onboarding UI in this task
+- Run `pnpm run typecheck` after Slice 5
+
+---
+
+## Acceptance checklist
+- [ ] All 7 session state tests written and passing
+- [ ] Guard function enforces consent → scenario → persona → voice 
+      in order
+- [ ] voice_cloned: false correctly passes the guard as a valid 
+      voice state
+- [ ] Server-side session validates state chain on session start, 
+      not just client-side
+- [ ] Direct URL navigation to /session without complete state 
+      is blocked and redirected
+- [ ] consent_given bypass audit returned no Critical or High findings
+- [ ] code-reviewer flagged no Blockers
+- [ ] `pnpm run typecheck` passes with no errors
