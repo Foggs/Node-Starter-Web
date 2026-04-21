@@ -164,15 +164,27 @@ export default function Setup() {
   function handleScenarioSelect(id: string) {
     setSelectedScenario(id);
     setSaveError(false);
-    savePrefs({ ...loadPrefs(), scenarioId: id });
-    saveSession({ data: { scenario: id } });
+    saveSession(
+      { data: { scenario: id } },
+      {
+        onSuccess: () => {
+          savePrefs({ ...loadPrefs(), scenarioId: id });
+        },
+      },
+    );
   }
 
   function handlePersonaSelect(id: string) {
     setSelectedPersona(id);
     setSaveError(false);
-    savePrefs({ ...loadPrefs(), personaId: id });
-    saveSession({ data: { persona: id } });
+    saveSession(
+      { data: { persona: id } },
+      {
+        onSuccess: () => {
+          savePrefs({ ...loadPrefs(), personaId: id });
+        },
+      },
+    );
   }
 
   const canBegin = selectedScenario !== null && selectedPersona !== null && !isSaving;
