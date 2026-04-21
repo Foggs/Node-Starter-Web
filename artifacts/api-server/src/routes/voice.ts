@@ -2,7 +2,7 @@ import { Router, type IRouter } from "express";
 import multer from "multer";
 import { sessionGuard } from "../middlewares/sessionGuard.js";
 import { voiceRateLimit } from "../middlewares/rateLimits.js";
-import { cloneVoice, synthesizeSpeech, ElevenLabsError } from "../lib/elevenlabs.js";
+import { cloneVoice, synthesizeSpeech, deleteVoice, ElevenLabsError } from "../lib/elevenlabs.js";
 
 /**
  * A well-known ElevenLabs pre-built voice used when the manager has not cloned
@@ -104,6 +104,43 @@ router.get("/voice/preview", voiceRateLimit, sessionGuard, async (req, res) => {
     }
     throw err;
   }
+});
+
+// ─── DELETE /api/voice ───────────────────────────────────────────────────────
+
+/**
+ * Discard the currently cloned voice so the manager can re-record.
+ * Removes the voice from ElevenLabs and wipes the session fields so a fresh
+ * clone-voice upload is required before the session is considered ready.
+ */
+router.delete("/voice", sessionGuard, async (req, res) => {
+  // Snapshot the voice_id at request time. If a concurrent clone-voice
+  // completes while ElevenLabs deletion is in-flight, we must NOT overwrite
+  // the freshly cloned session state with our stale discard.
+  const capturedVoiceId = req.session.voice_id;
+
+  if (capturedVoiceId) {
+    try {
+      await deleteVoice(capturedVoiceId);
+    } catch (err) {
+      if (err instanceof ElevenLabsError) {
+        res.status(502).json({ error: "Failed to remove cloned voice" });
+        return;
+      }
+      throw err;
+    }
+  }
+
+  // Only clear the session if the voice_id hasn't changed since we started.
+  // A concurrent POST /clone-voice could have replaced it by now.
+  if (req.session.voice_id === capturedVoiceId) {
+    req.session.voice_id = undefined;
+    // Reset to undefined (not false) so voice_step_completed returns false.
+    // Setting false would signal "fallback accepted"; undefined means "not yet done".
+    req.session.voice_cloned = undefined;
+  }
+
+  res.status(200).json({ success: true });
 });
 
 export default router;

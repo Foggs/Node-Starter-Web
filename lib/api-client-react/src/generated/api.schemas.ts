@@ -91,10 +91,11 @@ export interface Turn {
  */
 export interface SessionState {
   consent_given: boolean;
-  voice_cloned?: boolean | null;
+  voice_cloned: boolean;
   /** Whether a voice_id exists in the session (the ID itself is never returned) */
   voice_id_present: boolean;
-  /** True when the voice step is complete (cloned OR fallback taken) */
+  /** True when the voice step is done — either a voice was cloned successfully or the user accepted the generic-voice fallback. False when the step has not been reached or after the voice was discarded.
+   */
   voice_step_completed: boolean;
   scenario?: string | null;
   persona?: string | null;
@@ -201,4 +202,8 @@ export type UpdateSessionBody = {
 export type CloneVoiceBody = {
   /** Manager's voice recording (30-60 seconds of natural speech) */
   audio: Blob;
+};
+
+export type DiscardVoice200 = {
+  success: boolean;
 };

@@ -23,6 +23,7 @@ import type {
   CoachingTipResponse,
   ConsentRequest,
   ConsentResponse,
+  DiscardVoice200,
   EmployeeTurnResponse,
   EmployeeVoiceResponse,
   ErrorResponse,
@@ -680,6 +681,93 @@ export const useCloneVoice = <
   TContext
 > => {
   return useMutation(getCloneVoiceMutationOptions(options));
+};
+
+/**
+ * Removes the cloned voice from ElevenLabs and clears it from the session,
+allowing the manager to re-record. The session's voice_cloned flag is reset
+to false so the Continue button becomes disabled until a new recording is submitted.
+
+ * @summary Discard the cloned voice
+ */
+export const getDiscardVoiceUrl = () => {
+  return `/api/voice`;
+};
+
+export const discardVoice = async (
+  options?: RequestInit,
+): Promise<DiscardVoice200> => {
+  return customFetch<DiscardVoice200>(getDiscardVoiceUrl(), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDiscardVoiceMutationOptions = <
+  TError = ErrorType<UnauthorizedResponse | ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof discardVoice>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof discardVoice>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["discardVoice"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof discardVoice>>,
+    void
+  > = () => {
+    return discardVoice(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DiscardVoiceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof discardVoice>>
+>;
+
+export type DiscardVoiceMutationError = ErrorType<
+  UnauthorizedResponse | ErrorResponse
+>;
+
+/**
+ * @summary Discard the cloned voice
+ */
+export const useDiscardVoice = <
+  TError = ErrorType<UnauthorizedResponse | ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof discardVoice>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof discardVoice>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getDiscardVoiceMutationOptions(options));
 };
 
 /**

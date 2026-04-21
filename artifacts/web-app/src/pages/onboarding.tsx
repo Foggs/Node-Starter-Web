@@ -13,7 +13,7 @@ import {
   Square,
   RefreshCw,
 } from "lucide-react";
-import { getVoicePreview } from "@workspace/api-client-react";
+import { getVoicePreview, discardVoice } from "@workspace/api-client-react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -101,6 +101,8 @@ export default function Onboarding() {
   const [errorMsg, setErrorMsg] = useState("");
   const [isMicError, setIsMicError] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [isDiscarding, setIsDiscarding] = useState(false);
+  const [discardError, setDiscardError] = useState<string | null>(null);
   const [, navigate] = useLocation();
 
   const recorderRef = useRef<MediaRecorder | null>(null);
@@ -237,6 +239,35 @@ export default function Onboarding() {
 
   // Re-record from the fallback state — discard the saved blob and start fresh
   const reRecordFromFallback = useCallback(() => {
+    blobRef.current = null;
+    mimeTypeRef.current = "";
+    setSeconds(0);
+    setPhase("idle");
+  }, []);
+
+  // Re-record from the success state — remove the cloned voice and start fresh.
+  // Awaits the server discard before resetting to idle so a new recording cannot
+  // start while the DELETE is still in-flight (avoids a race where the delayed
+  // DELETE overwrites a newly cloned session state).
+  const reRecordFromSuccess = useCallback(async () => {
+    // Stop any in-progress preview playback
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    setPreviewState("idle");
+    setDiscardError(null);
+    setIsDiscarding(true);
+
+    try {
+      await discardVoice();
+    } catch {
+      setDiscardError("Couldn't remove the cloned voice — please try again.");
+      setIsDiscarding(false);
+      return;
+    }
+
+    setIsDiscarding(false);
     blobRef.current = null;
     mimeTypeRef.current = "";
     setSeconds(0);
@@ -493,8 +524,26 @@ export default function Onboarding() {
               </div>
             </div>
 
-            {/* Preview button */}
-            <div className="mt-3 flex items-center gap-3">
+            {/* Actions: preview + re-record */}
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <button
+                onClick={() => void reRecordFromSuccess()}
+                disabled={isDiscarding}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold border border-green-400 bg-white text-green-700 hover:bg-green-100 transition-colors disabled:opacity-50 disabled:cursor-wait"
+              >
+                {isDiscarding ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    Removing…
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Record again
+                  </>
+                )}
+              </button>
+
               <button
                 onClick={() => void handlePreview()}
                 disabled={previewState === "loading"}
@@ -529,6 +578,10 @@ export default function Onboarding() {
                 </span>
               )}
             </div>
+
+            {discardError && (
+              <p className="mt-2 text-xs text-red-600">{discardError}</p>
+            )}
           </div>
         )}
 
@@ -612,7 +665,7 @@ export default function Onboarding() {
           </Link>
           <Button
             onClick={() => navigate("/session")}
-            disabled={!isTerminal}
+            disabled={!isTerminal || isDiscarding}
             className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold gap-2 disabled:opacity-40"
           >
             Continue <ArrowRight className="w-4 h-4" />

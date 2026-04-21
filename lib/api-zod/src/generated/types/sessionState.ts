@@ -15,11 +15,9 @@ export interface SessionState {
   voice_cloned: boolean;
   /** Whether a voice_id exists in the session (the ID itself is never returned) */
   voice_id_present: boolean;
-  /**
-   * True when the voice step has been completed (either via successful clone or
-   * generic-voice fallback). False when the voice step has not yet been reached.
+  /** True when the voice step is done — either a voice was cloned successfully or the user accepted the generic-voice fallback. False when the step has not been reached or after the voice was discarded.
    */
-  voice_step_completed?: boolean;
+  voice_step_completed: boolean;
   scenario?: string | null;
   persona?: string | null;
   turns: Turn[];

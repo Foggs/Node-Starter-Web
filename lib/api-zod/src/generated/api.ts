@@ -71,9 +71,8 @@ export const GetSessionResponse = zod
       ),
     voice_step_completed: zod
       .boolean()
-      .optional()
       .describe(
-        "True when the voice step has been completed (clone or fallback). False when not yet reached.",
+        "True when the voice step is done — either a voice was cloned successfully or the user accepted the generic-voice fallback. False when the step has not been reached or after the voice was discarded.\n",
       ),
     scenario: zod.string().nullish(),
     persona: zod.string().nullish(),
@@ -132,9 +131,8 @@ export const UpdateSessionResponse = zod
       ),
     voice_step_completed: zod
       .boolean()
-      .optional()
       .describe(
-        "True when the voice step has been completed (clone or fallback). False when not yet reached.",
+        "True when the voice step is done — either a voice was cloned successfully or the user accepted the generic-voice fallback. False when the step has not been reached or after the voice was discarded.\n",
       ),
     scenario: zod.string().nullish(),
     persona: zod.string().nullish(),
@@ -203,6 +201,17 @@ export const CloneVoiceResponse = zod.object({
     .describe(
       "True when voice cloning failed and a generic ElevenLabs voice will be used instead",
     ),
+});
+
+/**
+ * Removes the cloned voice from ElevenLabs and clears it from the session,
+allowing the manager to re-record. The session's voice_cloned flag is reset
+to false so the Continue button becomes disabled until a new recording is submitted.
+
+ * @summary Discard the cloned voice
+ */
+export const DiscardVoiceResponse = zod.object({
+  success: zod.boolean(),
 });
 
 /**
