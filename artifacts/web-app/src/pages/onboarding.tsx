@@ -235,6 +235,14 @@ export default function Onboarding() {
     setErrorMsg("");
   }, []);
 
+  // Re-record from the fallback state — discard the saved blob and start fresh
+  const reRecordFromFallback = useCallback(() => {
+    blobRef.current = null;
+    mimeTypeRef.current = "";
+    setSeconds(0);
+    setPhase("idle");
+  }, []);
+
   // ── voice preview handler ──────────────────────────────────────────────────
 
   const handlePreview = useCallback(async () => {
@@ -541,8 +549,15 @@ export default function Onboarding() {
               </div>
             </div>
 
-            {/* Preview disabled on fallback path */}
-            <div className="mt-3">
+            {/* Actions: re-record + disabled preview */}
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <button
+                onClick={reRecordFromFallback}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold border border-amber-400 bg-white text-amber-700 hover:bg-amber-100 transition-colors"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Try recording again
+              </button>
               <button
                 disabled
                 className="flex items-center gap-2 px-4 py-2 rounded-lg text-xs font-semibold border bg-white text-slate-400 border-slate-200 cursor-not-allowed opacity-50"
@@ -550,10 +565,10 @@ export default function Onboarding() {
                 <Play className="w-3.5 h-3.5 fill-current" />
                 Hear your voice
               </button>
-              <p className="text-xs text-amber-700 mt-1.5">
-                Voice preview is unavailable when using the generic voice.
-              </p>
             </div>
+            <p className="text-xs text-amber-700 mt-1.5">
+              Voice preview is unavailable when using the generic voice.
+            </p>
           </div>
         )}
 
