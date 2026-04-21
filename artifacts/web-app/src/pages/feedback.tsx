@@ -1,5 +1,6 @@
-import { useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
+import { ApiError } from "@workspace/api-client-react";
 import {
   LineChart,
   Line,
@@ -244,12 +245,18 @@ function FeedbackPanel({
   onExport,
   onReplay,
   isExporting,
+  exportError,
+  exportSuccess,
+  onDismissExportError,
 }: {
   feedback: FeedbackSummary;
   turns: Turn[];
   onExport: () => void;
   onReplay: () => void;
   isExporting?: boolean;
+  exportError?: { title: string; body: string } | null;
+  exportSuccess?: boolean;
+  onDismissExportError?: () => void;
 }) {
   const [, navigate] = useLocation();
 
@@ -341,21 +348,82 @@ function FeedbackPanel({
       {/* Per-turn coaching recap from session */}
       <CoachingRecap turns={turns} />
 
+      {/* Export error */}
+      {exportError && (
+        <Card className="border-red-200 bg-red-50">
+          <CardContent className="pt-4 pb-4 flex items-start gap-3">
+            <AlertTriangle
+              className="w-5 h-5 text-red-500 shrink-0 mt-0.5"
+              aria-hidden="true"
+            />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-red-800">
+                {exportError.title}
+              </p>
+              <p className="text-xs text-red-600 mt-0.5">{exportError.body}</p>
+            </div>
+            <div className="flex gap-2 shrink-0">
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-red-300 text-red-700 gap-1"
+                onClick={onExport}
+                disabled={isExporting}
+              >
+                <RefreshCw className="w-3.5 h-3.5" /> Try again
+              </Button>
+              {onDismissExportError && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="text-red-600"
+                  onClick={onDismissExportError}
+                >
+                  Dismiss
+                </Button>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Live region for assistive tech */}
+      <div role="status" aria-live="polite" className="sr-only">
+        {isExporting
+          ? "Generating your report"
+          : exportSuccess
+            ? "Report downloaded"
+            : exportError
+              ? `${exportError.title}. ${exportError.body}`
+              : ""}
+      </div>
+
       {/* Actions */}
-      <div className="flex flex-wrap gap-3 pt-2 pb-4">
+      <div className="flex flex-wrap items-center gap-3 pt-2 pb-4">
         <Button
           variant="outline"
           className="gap-2 text-slate-600"
           onClick={onExport}
           disabled={isExporting}
+          aria-busy={isExporting || undefined}
         >
           {isExporting ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
+            <Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" />
           ) : (
-            <FileText className="w-4 h-4" />
+            <FileText className="w-4 h-4" aria-hidden="true" />
           )}
-          {isExporting ? "Generating…" : "Export PDF"}
+          {isExporting
+            ? "Generating…"
+            : exportError
+              ? "Try export again"
+              : "Export PDF"}
         </Button>
+        {exportSuccess && !isExporting && !exportError && (
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700">
+            <CheckCircle2 className="w-4 h-4" aria-hidden="true" />
+            Report downloaded
+          </span>
+        )}
         <Button
           variant="outline"
           className="gap-2 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
@@ -405,17 +473,97 @@ export default function Feedback() {
     feedbackMutation.mutate();
   }
 
+  const exportInFlightRef = useRef(false);
+  const [exportError, setExportError] = useState<{
+    title: string;
+    body: string;
+  } | null>(null);
+  const [exportSuccess, setExportSuccess] = useState(false);
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current) clearTimeout(successTimerRef.current);
+    };
+  }, []);
+
+  function categorizeExportError(err: unknown): { title: string; body: string } {
+    if (err instanceof ApiError) {
+      if (err.status === 401 || err.status === 403) {
+        return {
+          title: "Your session has expired",
+          body: "Start a new session to download a fresh report.",
+        };
+      }
+      if (err.status === 408 || err.status === 504) {
+        return {
+          title: "The report took too long to generate",
+          body: "The server is busy. Wait a moment and try again.",
+        };
+      }
+      if (err.status >= 500) {
+        return {
+          title: "We couldn't generate your report",
+          body: "Something went wrong on our side. Please try again in a moment.",
+        };
+      }
+      return {
+        title: "We couldn't generate your report",
+        body: "Please try again. If this keeps happening, start a new session.",
+      };
+    }
+    if (err instanceof TypeError) {
+      return {
+        title: "You appear to be offline",
+        body: "Check your internet connection and try again.",
+      };
+    }
+    return {
+      title: "We couldn't download your report",
+      body: "Please try again in a moment.",
+    };
+  }
+
   function handleExport() {
+    if (exportInFlightRef.current || exportMutation.isPending) return;
+    exportInFlightRef.current = true;
+    setExportError(null);
+    setExportSuccess(false);
+
     exportMutation.mutate(undefined, {
       onSuccess: (blob) => {
-        const url = URL.createObjectURL(blob as Blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `exit-coach-report-${Date.now()}.pdf`;
-        a.click();
-        URL.revokeObjectURL(url);
+        try {
+          const url = URL.createObjectURL(blob as Blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = `exit-coach-report-${Date.now()}.pdf`;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          // Defer revoke so the browser has time to start the download.
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+          setExportSuccess(true);
+          if (successTimerRef.current) clearTimeout(successTimerRef.current);
+          successTimerRef.current = setTimeout(
+            () => setExportSuccess(false),
+            4000,
+          );
+        } catch (err) {
+          setExportError(categorizeExportError(err));
+        } finally {
+          exportInFlightRef.current = false;
+        }
+      },
+      onError: (err) => {
+        exportInFlightRef.current = false;
+        setExportError(categorizeExportError(err));
       },
     });
+  }
+
+  function dismissExportError() {
+    setExportError(null);
+    exportMutation.reset();
   }
 
   return (
@@ -492,6 +640,9 @@ export default function Feedback() {
             onExport={handleExport}
             onReplay={() => navigate("/replay")}
             isExporting={exportMutation.isPending}
+            exportError={exportError}
+            exportSuccess={exportSuccess}
+            onDismissExportError={dismissExportError}
           />
         )}
 
