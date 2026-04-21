@@ -265,3 +265,151 @@ describe("Session state gate — POST /api/employee-turn", () => {
     },
   );
 });
+
+// ─── Session state gate — POST /api/improved-replay ──────────────────────────
+
+describe("Session state gate — POST /api/improved-replay", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  it(
+    "blocks at step 1 and reports missingStep:1 when consent has not been given",
+    async () => {
+      const cookie = await mintSession();
+
+      const res = await request(app)
+        .post("/api/improved-replay")
+        .set("Cookie", cookie);
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty("missingStep", 1);
+    },
+  );
+
+  it(
+    "blocks at step 2 and reports missingStep:2 when scenario has not been selected",
+    async () => {
+      const cookie = await mintSession();
+      await giveConsent(cookie);
+
+      const res = await request(app)
+        .post("/api/improved-replay")
+        .set("Cookie", cookie);
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty("missingStep", 2);
+    },
+  );
+
+  it(
+    "blocks at step 3 and reports missingStep:3 when persona has not been selected",
+    async () => {
+      const cookie = await mintSession();
+      await giveConsent(cookie);
+      await request(app)
+        .patch("/api/session")
+        .set("Cookie", cookie)
+        .send({ scenario: "layoff" })
+        .expect(200);
+
+      const res = await request(app)
+        .post("/api/improved-replay")
+        .set("Cookie", cookie);
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty("missingStep", 3);
+    },
+  );
+
+  it(
+    "blocks at step 4 and reports missingStep:4 when the voice step has not been completed",
+    async () => {
+      const cookie = await mintSession();
+      await giveConsent(cookie);
+      await setScenarioAndPersona(cookie);
+
+      const res = await request(app)
+        .post("/api/improved-replay")
+        .set("Cookie", cookie);
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty("missingStep", 4);
+    },
+  );
+});
+
+// ─── Session state gate — POST /api/feedback-summary ─────────────────────────
+
+describe("Session state gate — POST /api/feedback-summary", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.unstubAllEnvs();
+  });
+
+  it(
+    "blocks at step 1 and reports missingStep:1 when consent has not been given",
+    async () => {
+      const cookie = await mintSession();
+
+      const res = await request(app)
+        .post("/api/feedback-summary")
+        .set("Cookie", cookie);
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty("missingStep", 1);
+    },
+  );
+
+  it(
+    "blocks at step 2 and reports missingStep:2 when scenario has not been selected",
+    async () => {
+      const cookie = await mintSession();
+      await giveConsent(cookie);
+
+      const res = await request(app)
+        .post("/api/feedback-summary")
+        .set("Cookie", cookie);
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty("missingStep", 2);
+    },
+  );
+
+  it(
+    "blocks at step 3 and reports missingStep:3 when persona has not been selected",
+    async () => {
+      const cookie = await mintSession();
+      await giveConsent(cookie);
+      await request(app)
+        .patch("/api/session")
+        .set("Cookie", cookie)
+        .send({ scenario: "layoff" })
+        .expect(200);
+
+      const res = await request(app)
+        .post("/api/feedback-summary")
+        .set("Cookie", cookie);
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty("missingStep", 3);
+    },
+  );
+
+  it(
+    "blocks at step 4 and reports missingStep:4 when the voice step has not been completed",
+    async () => {
+      const cookie = await mintSession();
+      await giveConsent(cookie);
+      await setScenarioAndPersona(cookie);
+
+      const res = await request(app)
+        .post("/api/feedback-summary")
+        .set("Cookie", cookie);
+
+      expect(res.status).toBe(400);
+      expect(res.body).toHaveProperty("missingStep", 4);
+    },
+  );
+});

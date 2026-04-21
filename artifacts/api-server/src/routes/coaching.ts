@@ -373,6 +373,16 @@ router.post(
   llmRateLimit,
   sessionGuard,
   async (req, res) => {
+    const readiness = checkSessionReady(req.session);
+    if (!readiness.valid) {
+      res.status(400).json({
+        error:
+          "Onboarding incomplete — please complete all required steps before starting a session",
+        missingStep: readiness.missingStep,
+      });
+      return;
+    }
+
     const allTurns = req.session.turns ?? [];
     const managerTurns = allTurns
       .filter((t) => t.role === "manager")
@@ -571,6 +581,16 @@ function parseFeedbackResponse(raw: string): {
 // ─── POST /api/feedback-summary ──────────────────────────────────────────────
 
 router.post("/feedback-summary", llmRateLimit, sessionGuard, async (req, res) => {
+  const readiness = checkSessionReady(req.session);
+  if (!readiness.valid) {
+    res.status(400).json({
+      error:
+        "Onboarding incomplete — please complete all required steps before starting a session",
+      missingStep: readiness.missingStep,
+    });
+    return;
+  }
+
   const turns = req.session.turns ?? [];
   const managerTurns = turns.filter((t) => t.role === "manager");
 
