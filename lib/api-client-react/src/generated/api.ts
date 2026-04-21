@@ -33,6 +33,7 @@ import type {
   Persona,
   Ping200,
   Scenario,
+  SessionReadyError,
   SessionState,
   UnauthorizedResponse,
   UpdateSessionBody,
@@ -503,6 +504,89 @@ export const useUpdateSession = <
 };
 
 /**
+ * Runs the same readiness gate (`checkSessionReady`) used by all
+session-action endpoints (coaching-tip, employee-turn, improved-replay,
+feedback-summary). Returns 204 when every onboarding step is
+complete; otherwise returns 400 with the canonical `missingStep`
+(1=consent, 2=scenario, 3=persona, 4=voice). The client uses this
+single signal to drive the redirect interstitial so the gate reason
+always matches what the gated POST endpoints would say.
+
+ * @summary Probe whether onboarding is complete
+ */
+export const getGetSessionReadyUrl = () => {
+  return `/api/session/ready`;
+};
+
+export const getSessionReady = async (options?: RequestInit): Promise<void> => {
+  return customFetch<void>(getGetSessionReadyUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetSessionReadyQueryKey = () => {
+  return [`/api/session/ready`] as const;
+};
+
+export const getGetSessionReadyQueryOptions = <
+  TData = Awaited<ReturnType<typeof getSessionReady>>,
+  TError = ErrorType<SessionReadyError | UnauthorizedResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getSessionReady>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetSessionReadyQueryKey();
+
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getSessionReady>>> = ({
+    signal,
+  }) => getSessionReady({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getSessionReady>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetSessionReadyQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getSessionReady>>
+>;
+export type GetSessionReadyQueryError = ErrorType<
+  SessionReadyError | UnauthorizedResponse
+>;
+
+/**
+ * @summary Probe whether onboarding is complete
+ */
+
+export function useGetSessionReady<
+  TData = Awaited<ReturnType<typeof getSessionReady>>,
+  TError = ErrorType<SessionReadyError | UnauthorizedResponse>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getSessionReady>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetSessionReadyQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
  * Logs timestamped biometric consent before any voice recording begins.
 Required by BIPA and GDPR before collecting any voice biometric data.
 
@@ -685,8 +769,9 @@ export const useCloneVoice = <
 
 /**
  * Removes the cloned voice from ElevenLabs and clears it from the session,
-allowing the manager to re-record. The session's voice_cloned flag is reset
-to false so the Continue button becomes disabled until a new recording is submitted.
+allowing the manager to re-record. Both voice_id and voice_cloned are reset
+to undefined (not false), so voice_step_completed returns false and the
+Continue button becomes disabled until a new recording reaches a terminal state.
 
  * @summary Discard the cloned voice
  */

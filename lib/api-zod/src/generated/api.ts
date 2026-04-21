@@ -205,8 +205,9 @@ export const CloneVoiceResponse = zod.object({
 
 /**
  * Removes the cloned voice from ElevenLabs and clears it from the session,
-allowing the manager to re-record. The session's voice_cloned flag is reset
-to false so the Continue button becomes disabled until a new recording is submitted.
+allowing the manager to re-record. Both voice_id and voice_cloned are reset
+to undefined (not false), so voice_step_completed returns false and the
+Continue button becomes disabled until a new recording reaches a terminal state.
 
  * @summary Discard the cloned voice
  */

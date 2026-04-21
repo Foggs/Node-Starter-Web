@@ -22,6 +22,8 @@ export * from "./personaId";
 export * from "./ping200";
 export * from "./scenario";
 export * from "./scenarioId";
+export * from "./sessionReadyError";
+export * from "./sessionReadyErrorMissingStep";
 export * from "./sessionState";
 export * from "./turn";
 export * from "./turnRole";

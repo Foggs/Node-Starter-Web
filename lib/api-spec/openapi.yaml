@@ -130,6 +130,31 @@ paths:
         "401":
           $ref: "#/components/responses/Unauthorized"
 
+  /session/ready:
+    get:
+      operationId: getSessionReady
+      tags: [session]
+      summary: Probe whether onboarding is complete
+      description: |
+        Runs the same readiness gate (`checkSessionReady`) used by all
+        session-action endpoints (coaching-tip, employee-turn, improved-replay,
+        feedback-summary). Returns 204 when every onboarding step is
+        complete; otherwise returns 400 with the canonical `missingStep`
+        (1=consent, 2=scenario, 3=persona, 4=voice). The client uses this
+        single signal to drive the redirect interstitial so the gate reason
+        always matches what the gated POST endpoints would say.
+      responses:
+        "204":
+          description: All onboarding steps complete; session may proceed
+        "400":
+          description: Onboarding incomplete; see missingStep for the first failing step
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SessionReadyError"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
   /consent:
     post:
       operationId: recordConsent
@@ -425,6 +450,22 @@ components:
           description: Human-readable error message
       required:
         - error
+
+    SessionReadyError:
+      type: object
+      description: 400 body returned by the readiness gate when onboarding is incomplete
+      properties:
+        error:
+          type: string
+        missingStep:
+          type: integer
+          enum: [1, 2, 3, 4]
+          description: |
+            First incomplete onboarding step in canonical order:
+            1 = Biometric consent, 2 = Scenario, 3 = Persona, 4 = Voice.
+      required:
+        - error
+        - missingStep
 
     HealthStatus:
       type: object

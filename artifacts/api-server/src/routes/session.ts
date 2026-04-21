@@ -1,5 +1,6 @@
 import { Router, type IRouter } from "express";
 import { sessionGuard } from "../middlewares/sessionGuard.js";
+import { checkSessionReady } from "../middlewares/sessionReady.js";
 
 const router: IRouter = Router();
 
@@ -26,6 +27,21 @@ function sanitise(req: import("express").Request) {
 router.get("/session", sessionGuard, (req, res) => {
   res.json(sanitise(req));
 });
+
+/**
+ * Readiness probe. Reuses the canonical checkSessionReady middleware so the
+ * client receives the exact same `missingStep` value that gated POST
+ * endpoints (coaching-tip, employee-turn, improved-replay, feedback-summary)
+ * would emit. On success the middleware calls next() and we reply 204.
+ */
+router.get(
+  "/session/ready",
+  sessionGuard,
+  checkSessionReady,
+  (_req, res) => {
+    res.status(204).end();
+  },
+);
 
 router.patch("/session", sessionGuard, (req, res) => {
   const { scenario, persona } = req.body as {

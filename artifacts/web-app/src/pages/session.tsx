@@ -42,10 +42,17 @@ import { categorizeMicError } from "@/lib/micErrors";
 import {
   useListScenarios,
   useListPersonas,
+  useGetSessionReady,
   getListScenariosQueryKey,
   getListPersonasQueryKey,
+  getGetSessionReadyQueryKey,
 } from "@workspace/api-client-react";
 import type { Scenario, Persona } from "@workspace/api-client-react";
+import {
+  isMissingStep,
+  missingStepInfo,
+  type MissingStep,
+} from "@/lib/sessionMissingStep";
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -513,16 +520,28 @@ export default function Session() {
     "checking" | "ready" | "redirecting"
   >("checking");
   const [redirectReason, setRedirectReason] = useState<{
-    step: 1 | 2 | 3 | 4;
+    step: MissingStep;
     label: string;
     target: string;
   } | null>(null);
 
-  const sessionReadyQuery = useGetSession({
+  // Hits the server's readiness gate (same middleware as gated POSTs) so the
+  // `missingStep` value driving the interstitial is always the canonical
+  // server-side answer rather than a client-side guess.
+  const sessionReadyQuery = useGetSessionReady<unknown, ApiError>({
     query: {
-      queryKey: getGetSessionQueryKey(),
+      queryKey: getGetSessionReadyQueryKey(),
       enabled: sessionReady === "checking",
       retry: false,
+    },
+  });
+
+  // We still need GET /session for downstream UI (turn history, scenario
+  // hydration, recovery banner names) once readiness is confirmed.
+  const sessionStateQuery = useGetSession({
+    query: {
+      queryKey: getGetSessionQueryKey(),
+      enabled: sessionReady === "ready",
     },
   });
 
@@ -574,42 +593,44 @@ export default function Session() {
   // incomplete onboarding step; advances to "ready" when all four steps pass.
   useEffect(() => {
     if (sessionReady !== "checking") return;
-    const { data, isError } = sessionReadyQuery;
-    if (!data && !isError) return; // still loading
+    const { isSuccess, isError, error } = sessionReadyQuery;
+    if (!isSuccess && !isError) return; // still loading
 
-    function redirectAfterDelay(
-      step: 1 | 2 | 3 | 4,
-      label: string,
-      target: string,
-    ) {
-      setRedirectReason({ step, label, target });
+    function redirectAfterDelay(info: {
+      step: MissingStep;
+      label: string;
+      target: string;
+    }) {
+      setRedirectReason(info);
       setSessionReady("redirecting");
       // Brief pause so the interstitial is announced and visible.
-      window.setTimeout(() => navigate(target), 1200);
+      window.setTimeout(() => navigate(info.target), 1200);
     }
 
-    if (isError || !data) {
-      redirectAfterDelay(1, "the start", "/");
+    if (isError) {
+      // 401 (no session) or 400 (gate failed). Read the canonical
+      // missingStep from the server's response body when present.
+      if (error instanceof ApiError && error.status === 400) {
+        const body = error.data as { missingStep?: unknown } | null;
+        const step = body?.missingStep;
+        if (isMissingStep(step)) {
+          redirectAfterDelay(missingStepInfo(step));
+          return;
+        }
+      }
+      // Unauthorized / unknown error → start over.
+      redirectAfterDelay({ step: 1, label: "Biometric Consent", target: "/" });
       return;
     }
-    if (!data.consent_given) {
-      redirectAfterDelay(1, "Biometric Consent", "/consent");
-      return;
-    }
-    if (!data.scenario) {
-      redirectAfterDelay(2, "Scenario selection", "/setup");
-      return;
-    }
-    if (!data.persona) {
-      redirectAfterDelay(3, "Persona selection", "/setup");
-      return;
-    }
-    if (!data.voice_step_completed) {
-      redirectAfterDelay(4, "Voice setup", "/onboarding");
-      return;
-    }
+
     setSessionReady("ready");
-  }, [sessionReadyQuery.data, sessionReadyQuery.isError, sessionReady, navigate]);
+  }, [
+    sessionReadyQuery.isSuccess,
+    sessionReadyQuery.isError,
+    sessionReadyQuery.error,
+    sessionReady,
+    navigate,
+  ]);
 
   // ── checkpoint on mount (deferred until readiness is confirmed) ──
   useEffect(() => {
@@ -896,11 +917,11 @@ export default function Session() {
   }
 
   const scenarioNameForBanner = pendingCheckpoint
-    ? scenariosForBanner?.find((s) => s.id === sessionReadyQuery.data?.scenario)
+    ? scenariosForBanner?.find((s) => s.id === sessionStateQuery.data?.scenario)
         ?.name
     : undefined;
   const personaNameForBanner = pendingCheckpoint
-    ? personasForBanner?.find((p) => p.id === sessionReadyQuery.data?.persona)
+    ? personasForBanner?.find((p) => p.id === sessionStateQuery.data?.persona)
         ?.name
     : undefined;
 

@@ -13,6 +13,32 @@ export interface ErrorResponse {
   error: string;
 }
 
+/**
+ * First incomplete onboarding step in canonical order:
+1 = Biometric consent, 2 = Scenario, 3 = Persona, 4 = Voice.
+
+ */
+export type SessionReadyErrorMissingStep =
+  (typeof SessionReadyErrorMissingStep)[keyof typeof SessionReadyErrorMissingStep];
+
+export const SessionReadyErrorMissingStep = {
+  NUMBER_1: 1,
+  NUMBER_2: 2,
+  NUMBER_3: 3,
+  NUMBER_4: 4,
+} as const;
+
+/**
+ * 400 body returned by the readiness gate when onboarding is incomplete
+ */
+export interface SessionReadyError {
+  error: string;
+  /** First incomplete onboarding step in canonical order:
+1 = Biometric consent, 2 = Scenario, 3 = Persona, 4 = Voice.
+ */
+  missingStep: SessionReadyErrorMissingStep;
+}
+
 export interface HealthStatus {
   status: string;
 }
