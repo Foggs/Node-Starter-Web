@@ -451,13 +451,12 @@ export default function Onboarding() {
                 )}
               </button>
 
-              {/* Live announcement of phase changes */}
+              {/* Live announcement of phase changes only — keep terse so
+                  screen readers aren't flooded during recording/uploading. */}
               <div role="status" aria-live="polite" className="sr-only">
                 {phase === "requesting" && "Requesting microphone access"}
-                {phase === "recording" &&
-                  `Recording in progress, ${seconds} seconds elapsed`}
-                {phase === "uploading" &&
-                  `Uploading recording, ${uploadProgress}%`}
+                {phase === "recording" && "Recording started"}
+                {phase === "uploading" && "Uploading recording"}
                 {phase === "success" && "Voice cloned successfully"}
                 {phase === "fallback" &&
                   "Recording complete, default voice will be used"}

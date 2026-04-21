@@ -29,7 +29,6 @@ export function useFocusOnRouteChange() {
       if (!target.hasAttribute("tabindex")) {
         target.setAttribute("tabindex", "-1");
       }
-      target.style.outline = "none";
       target.focus({ preventScroll: false });
     });
     return () => window.cancelAnimationFrame(id);
