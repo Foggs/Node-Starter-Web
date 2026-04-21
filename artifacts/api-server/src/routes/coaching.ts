@@ -7,6 +7,7 @@ import { llmRateLimit } from "../middlewares/rateLimits.js";
 import { transcribeAudio, chatCompletion } from "../lib/openai.js";
 import { sanitizeTranscript } from "../lib/sanitize.js";
 import { synthesizeSpeech } from "../lib/elevenlabs.js";
+import { generateRewrites } from "../lib/improvedReplay.js";
 import { scenarios } from "../data/scenarios.js";
 import { personas } from "../data/personas.js";
 import type { SessionData } from "express-session";
@@ -282,41 +283,12 @@ router.post("/employee-turn", llmRateLimit, sessionGuard, checkSessionReady, asy
   res.status(200).json({ transcript, turnIndex });
 });
 
-// ─── improved-replay prompt builder ───────────────────────────────────────────
-
-function buildRewriteSystemPrompt(
-  scenario: (typeof scenarios)[number] | undefined,
-  persona: (typeof personas)[number] | undefined,
-): string {
-  const scenarioBlock = scenario
-    ? `Scenario: ${scenario.name} — ${scenario.description}`
-    : "Scenario: a difficult HR conversation";
-
-  const personaBlock = persona
-    ? `Employee: ${persona.name} (${persona.emotionalStyle})`
-    : "Employee: a distressed team member";
-
-  return [
-    "You are an expert HR communication coach.",
-    "",
-    scenarioBlock,
-    personaBlock,
-    "",
-    "Your task: rewrite the manager's statement to make it more empathetic, clear, and psychologically safe.",
-    "RULES:",
-    "- Preserve the core message and intent — do NOT change what is being communicated.",
-    "- Use plain, warm language. Avoid jargon.",
-    "- Keep the length similar to the original (within ±20%).",
-    "- Do NOT add preamble such as 'Here is a rewritten version…'.",
-    "- Respond ONLY with the rewritten statement — no commentary.",
-  ].join("\n");
-}
-
-function buildRewriteUserPrompt(transcript: string, turnIndex: number): string {
-  return `Manager's turn ${turnIndex}:\n\n"${transcript}"\n\nRewrite:`;
-}
-
 // ─── POST /api/improved-replay ────────────────────────────────────────────────
+//
+// Rewrite generation now lives in `lib/improvedReplay.ts` which enforces
+// per-persona, per-turn structural variety (no more "I see that…" repeats).
+// This route is responsible only for orchestration: gating, rewrite call,
+// per-turn TTS synthesis, and session mutation.
 
 router.post(
   "/improved-replay",
@@ -325,9 +297,7 @@ router.post(
   checkSessionReady,
   async (req, res) => {
     const allTurns = req.session.turns ?? [];
-    const managerTurns = allTurns
-      .filter((t) => t.role === "manager")
-      .sort((a, b) => a.turn_index - b.turn_index);
+    const managerTurns = allTurns.filter((t) => t.role === "manager");
 
     if (managerTurns.length === 0) {
       res.status(400).json({
@@ -336,13 +306,20 @@ router.post(
       return;
     }
 
-    const scenario = scenarios.find((s) => s.id === req.session.scenario);
-    const persona = personas.find((p) => p.id === req.session.persona);
     const voiceId = req.session.voice_id ?? GENERIC_VOICE_ID;
 
-    const systemPrompt = buildRewriteSystemPrompt(scenario, persona);
+    let rewrites: Awaited<ReturnType<typeof generateRewrites>>;
+    try {
+      rewrites = await generateRewrites({
+        scenario: req.session.scenario,
+        persona: req.session.persona,
+        turns: allTurns,
+      });
+    } catch {
+      res.status(502).json({ error: "AI service unavailable — try again later" });
+      return;
+    }
 
-    // Process each manager turn sequentially — yields progressive results
     const results: Array<{
       turnIndex: number;
       originalTranscript: string;
@@ -350,25 +327,8 @@ router.post(
       audioUrl: string;
     }> = [];
 
-    for (const turn of managerTurns) {
-      let rawImproved: string;
-      try {
-        rawImproved = await chatCompletion(
-          [
-            { role: "system", content: systemPrompt },
-            {
-              role: "user",
-              content: buildRewriteUserPrompt(turn.transcript, turn.turn_index),
-            },
-          ],
-          { temperature: 0.7, max_tokens: 300 },
-        );
-      } catch {
-        res.status(502).json({ error: "AI service unavailable — try again later" });
-        return;
-      }
-
-      const improvedTranscript = sanitizeTranscript(rawImproved.trim());
+    for (const rewrite of rewrites) {
+      const improvedTranscript = rewrite.improved;
 
       // TTS audio synthesis — gracefully falls back to generic voice on error
       let audioBuffer: Buffer | undefined;
@@ -386,17 +346,14 @@ router.post(
         }
       }
 
-      // Assign a stable UUID to this turn so the audio can be retrieved
       const turnId = crypto.randomUUID();
-
-      // Store audio as base64 string so it survives session serialization
       const audioBase64 = audioBuffer
         ? audioBuffer.toString("base64")
         : undefined;
 
       // Mutate the matching turn in session.turns in-place
       req.session.turns = req.session.turns!.map((t) =>
-        t.role === "manager" && t.turn_index === turn.turn_index
+        t.role === "manager" && t.turn_index === rewrite.turn_index
           ? {
               ...t,
               turn_id: turnId,
@@ -407,8 +364,8 @@ router.post(
       );
 
       results.push({
-        turnIndex: turn.turn_index,
-        originalTranscript: turn.transcript,
+        turnIndex: rewrite.turn_index,
+        originalTranscript: rewrite.original,
         improvedTranscript,
         audioUrl: `/api/audio/${turnId}`,
       });
