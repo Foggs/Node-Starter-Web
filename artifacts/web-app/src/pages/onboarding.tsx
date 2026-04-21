@@ -11,8 +11,9 @@ import {
   WifiOff,
   Play,
   Square,
+  RefreshCw,
 } from "lucide-react";
-import { useCloneVoice, getVoicePreview } from "@workspace/api-client-react";
+import { getVoicePreview } from "@workspace/api-client-react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -47,6 +48,50 @@ function formatTime(s: number): string {
   return `${m}:${sec.toString().padStart(2, "0")}`;
 }
 
+/**
+ * Upload audio via XHR so we can track real upload progress.
+ * Returns the parsed JSON body on success, or throws on network / HTTP error.
+ */
+function uploadAudio(
+  blob: Blob,
+  mimeType: string,
+  onProgress: (pct: number) => void,
+): Promise<{ success: boolean; fallback: boolean }> {
+  return new Promise((resolve, reject) => {
+    const fd = new FormData();
+    fd.append("audio", blob, `recording.${mimeType.split("/")[1] ?? "webm"}`);
+
+    const xhr = new XMLHttpRequest();
+    xhr.open("POST", "/api/clone-voice");
+    xhr.withCredentials = true;
+
+    xhr.timeout = 120_000; // 2-minute ceiling; covers large files on slow connections
+
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try {
+          resolve(JSON.parse(xhr.responseText) as { success: boolean; fallback: boolean });
+        } catch {
+          reject(new Error("Invalid response from server"));
+        }
+      } else {
+        reject(new Error(`Upload failed (${xhr.status})`));
+      }
+    };
+
+    xhr.onerror = () => reject(new Error("Network error — please check your connection"));
+    xhr.ontimeout = () => reject(new Error("Upload timed out — please try again"));
+
+    xhr.send(fd);
+  });
+}
+
 // ─── component ───────────────────────────────────────────────────────────────
 
 export default function Onboarding() {
@@ -54,12 +99,16 @@ export default function Onboarding() {
   const [seconds, setSeconds] = useState(0);
   const [shortWarning, setShortWarning] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
+  const [isMicError, setIsMicError] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [, navigate] = useLocation();
 
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const streamRef = useRef<MediaStream | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const blobRef = useRef<Blob | null>(null);
+  const mimeTypeRef = useRef<string>("");
 
   // ── voice preview ──────────────────────────────────────────────────────────
   type PreviewState = "idle" | "loading" | "playing" | "error";
@@ -74,19 +123,25 @@ export default function Onboarding() {
     };
   }, []);
 
-  const mutation = useCloneVoice({
-    mutation: {
-      onSuccess: (data) => {
-        setPhase(data.fallback ? "fallback" : "success");
-      },
-      onError: () => {
-        setErrorMsg(
-          "Upload failed — please check your connection and try again.",
-        );
-        setPhase("error");
-      },
-    },
-  });
+  // ── upload helper ──────────────────────────────────────────────────────────
+
+  const runUpload = useCallback(async (blob: Blob, mimeType: string) => {
+    setPhase("uploading");
+    setUploadProgress(0);
+
+    try {
+      const result = await uploadAudio(blob, mimeType, setUploadProgress);
+      setPhase(result.fallback ? "fallback" : "success");
+    } catch (err) {
+      const msg =
+        err instanceof Error
+          ? err.message
+          : "Upload failed — please check your connection and try again.";
+      setErrorMsg(msg);
+      setIsMicError(false);
+      setPhase("error");
+    }
+  }, []);
 
   // ── start recording ────────────────────────────────────────────────────────
 
@@ -101,6 +156,7 @@ export default function Onboarding() {
       setErrorMsg(
         "Microphone access was denied. Please allow access in your browser settings and reload.",
       );
+      setIsMicError(true);
       setPhase("error");
       return;
     }
@@ -109,6 +165,7 @@ export default function Onboarding() {
     chunksRef.current = [];
 
     const mimeType = pickMimeType();
+    mimeTypeRef.current = mimeType;
     const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : {});
     recorderRef.current = recorder;
 
@@ -124,8 +181,8 @@ export default function Onboarding() {
         type: recorder.mimeType || mimeType || "audio/webm",
       });
 
-      setPhase("uploading");
-      mutation.mutate({ data: { audio: blob } });
+      blobRef.current = blob;
+      void runUpload(blob, recorder.mimeType || mimeType || "audio/webm");
     };
 
     recorder.start(250); // collect chunks every 250 ms
@@ -135,7 +192,7 @@ export default function Onboarding() {
     timerRef.current = setInterval(() => {
       setSeconds((s) => s + 1);
     }, 1000);
-  }, [mutation]);
+  }, [runUpload]);
 
   // ── stop recording ─────────────────────────────────────────────────────────
 
@@ -156,6 +213,26 @@ export default function Onboarding() {
     setShortWarning(false);
     timerRef.current && clearInterval(timerRef.current);
     recorderRef.current?.stop();
+  }, []);
+
+  // ── retry upload ───────────────────────────────────────────────────────────
+
+  const retryUpload = useCallback(() => {
+    if (!blobRef.current) {
+      // No blob saved — restart from scratch
+      setPhase("idle");
+      setSeconds(0);
+      setErrorMsg("");
+      setIsMicError(false);
+      return;
+    }
+    void runUpload(blobRef.current, mimeTypeRef.current || "audio/webm");
+  }, [runUpload]);
+
+  // Accept fallback and move on without retrying
+  const acceptFallback = useCallback(() => {
+    setPhase("fallback");
+    setErrorMsg("");
   }, []);
 
   // ── voice preview handler ──────────────────────────────────────────────────
@@ -325,7 +402,24 @@ export default function Onboarding() {
                 )}
               </p>
 
-              {/* Progress bar towards 30 s */}
+              {/* Upload progress bar */}
+              {phase === "uploading" && (
+                <div className="w-full max-w-xs">
+                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-amber-400 transition-all duration-300"
+                      style={{ width: `${uploadProgress}%` }}
+                    />
+                  </div>
+                  <p className="text-xs text-slate-400 text-center mt-1">
+                    {uploadProgress < 100
+                      ? `Uploading… ${uploadProgress}%`
+                      : "Processing…"}
+                  </p>
+                </div>
+              )}
+
+              {/* Progress bar towards 30 s (recording only) */}
               {phase === "recording" && (
                 <div className="w-full max-w-xs">
                   <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
@@ -437,11 +531,12 @@ export default function Onboarding() {
               <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-amber-500" />
               <div>
                 <p className="font-semibold">
-                  Voice cloning isn't available right now.
+                  We'll use a default voice — you can still practice.
                 </p>
                 <p className="text-amber-700 mt-0.5">
-                  You can still complete the full practice session — the replay
-                  will use a generic voice instead of your own.
+                  Voice cloning isn't available right now. The replay at the
+                  end of your session will use a generic voice instead of your
+                  own. Everything else works as normal.
                 </p>
               </div>
             </div>
@@ -464,24 +559,31 @@ export default function Onboarding() {
 
         {/* Error banner */}
         {phase === "error" && (
-          <div className="flex gap-3 bg-red-50 border border-red-200 rounded-lg p-4 mb-6 text-sm text-red-700">
-            <WifiOff className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
-            <div>
-              <p className="font-semibold">Something went wrong.</p>
-              <p className="mt-0.5">{errorMsg}</p>
-              {errorMsg.includes("Microphone") ? null : (
-                <button
-                  onClick={() => {
-                    setPhase("idle");
-                    setSeconds(0);
-                    setErrorMsg("");
-                    mutation.reset();
-                  }}
-                  className="mt-2 text-xs underline underline-offset-2 hover:text-red-900"
-                >
-                  Try again
-                </button>
-              )}
+          <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-6 text-sm text-red-700">
+            <div className="flex gap-3">
+              <WifiOff className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
+              <div className="flex-1">
+                <p className="font-semibold">Something went wrong.</p>
+                <p className="mt-0.5">{errorMsg}</p>
+
+                {!isMicError && (
+                  <div className="flex flex-wrap gap-2 mt-3">
+                    <button
+                      onClick={retryUpload}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-600 text-white text-xs font-semibold hover:bg-red-500 transition-colors"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" />
+                      Retry upload
+                    </button>
+                    <button
+                      onClick={acceptFallback}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-red-300 text-red-700 text-xs font-semibold hover:bg-red-100 transition-colors"
+                    >
+                      Use default voice instead
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         )}
