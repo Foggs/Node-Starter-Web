@@ -28,7 +28,12 @@ declare module "express-session" {
     consent_timestamp: string | undefined;
     /** ElevenLabs voice ID — NEVER returned to the frontend. */
     voice_id: string | undefined;
-    voice_cloned: boolean;
+    /**
+     * undefined  = voice step not yet reached
+     * true       = voice cloned successfully (voice_id is set)
+     * false      = voice step completed via generic-voice fallback
+     */
+    voice_cloned: boolean | undefined;
     scenario: string | undefined;
     persona: string | undefined;
     turns: Turn[];

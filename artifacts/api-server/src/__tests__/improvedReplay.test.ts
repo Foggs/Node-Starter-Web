@@ -12,16 +12,26 @@ vi.mock("../lib/openai.js", () => ({
 }));
 
 // ── mock elevenlabs ───────────────────────────────────────────────────────────
-vi.mock("../lib/elevenlabs.js", () => ({
-  cloneVoice: vi.fn(),
-  deleteVoice: vi.fn(),
-  synthesizeSpeech: vi
-    .fn()
-    .mockResolvedValue(Buffer.from("fake-audio-bytes")),
-}));
+vi.mock("../lib/elevenlabs.js", () => {
+  class ElevenLabsError extends Error {
+    readonly status: number;
+    constructor(message: string, status: number) {
+      super(message);
+      this.name = "ElevenLabsError";
+      this.status = status;
+      Object.setPrototypeOf(this, new.target.prototype);
+    }
+  }
+  return {
+    cloneVoice: vi.fn(),
+    deleteVoice: vi.fn().mockResolvedValue(undefined),
+    synthesizeSpeech: vi.fn().mockResolvedValue(Buffer.from("fake-audio-bytes")),
+    ElevenLabsError,
+  };
+});
 
 import { chatCompletion } from "../lib/openai.js";
-import { synthesizeSpeech } from "../lib/elevenlabs.js";
+import { cloneVoice, synthesizeSpeech, ElevenLabsError } from "../lib/elevenlabs.js";
 
 // ── helpers ───────────────────────────────────────────────────────────────────
 
@@ -34,11 +44,39 @@ async function mintSession(): Promise<string> {
   return sid.split(";")[0]!;
 }
 
+/**
+ * Completes all four onboarding steps so the session is ready for coaching
+ * routes that are gated by checkSessionReady:
+ *  1. Biometric consent
+ *  2+3. Scenario + persona
+ *  4. Voice step via generic-voice fallback
+ */
 async function configureSession(cookie: string) {
+  // Step 1 — consent
+  await request(app)
+    .post("/api/consent")
+    .set("Cookie", cookie)
+    .send({ consentGiven: true })
+    .expect(200);
+
+  // Steps 2+3 — scenario + persona
   await request(app)
     .patch("/api/session")
     .set("Cookie", cookie)
     .send({ scenario: "layoff", persona: "tearful" })
+    .expect(200);
+
+  // Step 4 — voice step via fallback
+  vi.mocked(cloneVoice).mockRejectedValueOnce(
+    new ElevenLabsError("Subscription does not include voice cloning", 422),
+  );
+  await request(app)
+    .post("/api/clone-voice")
+    .set("Cookie", cookie)
+    .attach("audio", Buffer.from("fake-audio"), {
+      filename: "recording.webm",
+      contentType: "audio/webm",
+    })
     .expect(200);
 }
 

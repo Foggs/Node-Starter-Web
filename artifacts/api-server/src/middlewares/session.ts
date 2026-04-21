@@ -90,9 +90,6 @@ function initDefaults(
   if (req.session.consent_given === undefined) {
     req.session.consent_given = false;
   }
-  if (req.session.voice_cloned === undefined) {
-    req.session.voice_cloned = false;
-  }
   if (req.session.turns === undefined) {
     req.session.turns = [];
   }

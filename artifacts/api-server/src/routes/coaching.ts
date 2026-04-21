@@ -165,10 +165,12 @@ router.post(
   sessionGuard,
   upload.single("audio"),
   async (req, res) => {
-    if (!req.session.scenario || !req.session.persona) {
+    const readiness = checkSessionReady(req.session);
+    if (!readiness.valid) {
       res.status(400).json({
         error:
-          "Session not configured — complete scenario and persona selection before starting",
+          "Onboarding incomplete — please complete all required steps before starting a session",
+        missingStep: readiness.missingStep,
       });
       return;
     }
@@ -238,13 +240,47 @@ router.post(
   },
 );
 
+// ─── session-readiness gate ───────────────────────────────────────────────────
+
+/**
+ * Validates the full ordered onboarding chain before allowing session actions.
+ * Returns `{ valid: true }` when all four steps are complete, or
+ * `{ valid: false, missingStep: 1|2|3|4 }` at the first incomplete step.
+ *
+ * Steps:
+ *  1 = Biometric consent
+ *  2 = Scenario selection
+ *  3 = Persona selection
+ *  4 = Voice step (clone succeeded OR generic-voice fallback was taken)
+ */
+function checkSessionReady(session: {
+  consent_given?: boolean;
+  scenario?: string;
+  persona?: string;
+  voice_id?: string;
+  voice_cloned?: boolean;
+}): { valid: true } | { valid: false; missingStep: 1 | 2 | 3 | 4 } {
+  if (!session.consent_given) return { valid: false, missingStep: 1 };
+  if (!session.scenario) return { valid: false, missingStep: 2 };
+  if (!session.persona) return { valid: false, missingStep: 3 };
+  // Voice step is complete when voice_id is set (clone success) OR
+  // voice_cloned has been explicitly set to false (fallback taken).
+  // An undefined voice_cloned means the step was never reached.
+  const voiceStepDone =
+    session.voice_id !== undefined || session.voice_cloned === false;
+  if (!voiceStepDone) return { valid: false, missingStep: 4 };
+  return { valid: true };
+}
+
 // ─── POST /api/employee-turn ──────────────────────────────────────────────────
 
 router.post("/employee-turn", llmRateLimit, sessionGuard, async (req, res) => {
-  if (!req.session.scenario || !req.session.persona) {
+  const readiness = checkSessionReady(req.session);
+  if (!readiness.valid) {
     res.status(400).json({
       error:
-        "Session not configured — complete scenario and persona selection before starting",
+        "Onboarding incomplete — please complete all required steps before starting a session",
+      missingStep: readiness.missingStep,
     });
     return;
   }

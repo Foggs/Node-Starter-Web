@@ -21,6 +21,7 @@ import {
   ApiError,
   useGenerateEmployeeTurn,
   useGetCoachingTip,
+  useGetSession,
   useSynthesizeEmployeeVoice,
 } from "@workspace/api-client-react";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
@@ -284,6 +285,18 @@ function RecordingWave() {
 export default function Session() {
   const [, navigate] = useLocation();
 
+  // ── session-readiness gate ──
+  // "checking"    = waiting for the GET /session response
+  // "ready"       = all four onboarding steps confirmed; session can start
+  // "redirecting" = redirect has been triggered; component will unmount
+  const [sessionReady, setSessionReady] = useState<
+    "checking" | "ready" | "redirecting"
+  >("checking");
+
+  const sessionReadyQuery = useGetSession({
+    query: { enabled: sessionReady === "checking", retry: false },
+  });
+
   // ── checkpoint recovery ──
   const [pendingCheckpoint, setPendingCheckpoint] = useState<Checkpoint | null>(
     null,
@@ -313,8 +326,45 @@ export default function Session() {
     scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [completedTurns, phase]);
 
-  // ── checkpoint on mount ──
+  // ── session-readiness check ──
+  // Runs once after GET /session resolves. Redirects to the earliest
+  // incomplete onboarding step; advances to "ready" when all four steps pass.
   useEffect(() => {
+    if (sessionReady !== "checking") return;
+    const { data, isError } = sessionReadyQuery;
+    if (!data && !isError) return; // still loading
+
+    if (isError || !data) {
+      navigate("/");
+      setSessionReady("redirecting");
+      return;
+    }
+    if (!data.consent_given) {
+      navigate("/consent");
+      setSessionReady("redirecting");
+      return;
+    }
+    if (!data.scenario) {
+      navigate("/setup");
+      setSessionReady("redirecting");
+      return;
+    }
+    if (!data.persona) {
+      navigate("/setup");
+      setSessionReady("redirecting");
+      return;
+    }
+    if (!data.voice_step_completed) {
+      navigate("/onboarding");
+      setSessionReady("redirecting");
+      return;
+    }
+    setSessionReady("ready");
+  }, [sessionReadyQuery.data, sessionReadyQuery.isError, sessionReady, navigate]);
+
+  // ── checkpoint on mount (deferred until readiness is confirmed) ──
+  useEffect(() => {
+    if (sessionReady !== "ready") return;
     const checkpoint = loadCheckpoint();
     if (checkpoint && checkpoint.completedTurns.length > 0) {
       setPendingCheckpoint(checkpoint);
@@ -322,10 +372,11 @@ export default function Session() {
       // fresh start — fetch first employee turn
       setPhase({ tag: "fetching_employee", turnNum: 1 });
     }
-  }, []);
+  }, [sessionReady]);
 
   // ── fetch employee turn whenever phase enters fetching_employee ──
   useEffect(() => {
+    if (sessionReady !== "ready") return;
     if (phase.tag !== "fetching_employee") return;
     const { turnNum } = phase;
     setFetchError(null);
@@ -340,7 +391,7 @@ export default function Session() {
       },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase.tag === "fetching_employee" ? phase.turnNum : null, retryKey]);
+  }, [phase.tag === "fetching_employee" ? phase.turnNum : null, retryKey, sessionReady]);
 
   // ── synthesize & auto-play employee voice when entering employee phase ──
   useEffect(() => {
@@ -520,6 +571,18 @@ export default function Session() {
         : 1;
 
   // ─── render ───────────────────────────────────────────────────────────────
+
+  // Show a minimal spinner while verifying session readiness.
+  // All data effects are also gated so nothing fires before this resolves.
+  if (sessionReady !== "ready") {
+    return (
+      <AppShell>
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="w-6 h-6 text-slate-400 animate-spin" />
+        </div>
+      </AppShell>
+    );
+  }
 
   return (
     <AppShell>

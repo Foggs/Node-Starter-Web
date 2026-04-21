@@ -13,6 +13,27 @@ vi.mock("../lib/openai.js", () => ({
 
 import { chatCompletion } from "../lib/openai.js";
 
+// ── mock elevenlabs (needed for configureSession voice-fallback step) ─────────
+vi.mock("../lib/elevenlabs.js", () => {
+  class ElevenLabsError extends Error {
+    readonly status: number;
+    constructor(message: string, status: number) {
+      super(message);
+      this.name = "ElevenLabsError";
+      this.status = status;
+      Object.setPrototypeOf(this, new.target.prototype);
+    }
+  }
+  return {
+    cloneVoice: vi.fn(),
+    synthesizeSpeech: vi.fn(),
+    deleteVoice: vi.fn().mockResolvedValue(undefined),
+    ElevenLabsError,
+  };
+});
+
+import { cloneVoice, ElevenLabsError } from "../lib/elevenlabs.js";
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 async function mintSession(): Promise<string> {
@@ -24,11 +45,42 @@ async function mintSession(): Promise<string> {
   return sid.split(";")[0]!;
 }
 
+/**
+ * Fully prepares a session for the employee-turn endpoint:
+ * 1. Give biometric consent
+ * 2. Set scenario + persona
+ * 3. Trigger the voice-fallback path so voice_step_completed=true
+ *
+ * After this helper, the session satisfies all four onboarding steps and
+ * POST /api/employee-turn will not be blocked by the session-readiness gate.
+ */
 async function configureSession(cookie: string) {
+  // Step 1 — consent
+  await request(app)
+    .post("/api/consent")
+    .set("Cookie", cookie)
+    .send({ consentGiven: true })
+    .expect(200);
+
+  // Step 2+3 — scenario and persona
   await request(app)
     .patch("/api/session")
     .set("Cookie", cookie)
     .send({ scenario: "layoff", persona: "tearful" })
+    .expect(200);
+
+  // Step 4 — voice step via generic-voice fallback
+  vi.mocked(cloneVoice).mockRejectedValueOnce(
+    new ElevenLabsError("Subscription does not include voice cloning", 422),
+  );
+  const fakeAudio = Buffer.from("fake-audio-data");
+  await request(app)
+    .post("/api/clone-voice")
+    .set("Cookie", cookie)
+    .attach("audio", fakeAudio, {
+      filename: "recording.webm",
+      contentType: "audio/webm",
+    })
     .expect(200);
 }
 
@@ -68,8 +120,7 @@ describe("POST /api/employee-turn", () => {
         .post("/api/employee-turn")
         .set("Cookie", cookie);
       expect(res.status).toBe(400);
-      expect(res.body).toHaveProperty("error");
-      expect(res.body.error).toMatch(/not configured/i);
+      expect(res.body).toHaveProperty("missingStep");
     });
 
     it("returns 400 when session has no persona (scenario only)", async () => {

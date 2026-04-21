@@ -9,6 +9,14 @@ function sanitise(req: import("express").Request) {
     consent_given: req.session.consent_given ?? false,
     voice_cloned: req.session.voice_cloned ?? false,
     voice_id_present: Boolean(req.session.voice_id),
+    /**
+     * True when the voice step has been completed — either a voice was cloned
+     * successfully (voice_id present) or the user took the generic-voice
+     * fallback path (voice_cloned explicitly set to false by the voice route).
+     * False while the voice step has not yet been reached.
+     */
+    voice_step_completed:
+      req.session.voice_id !== undefined || req.session.voice_cloned === false,
     scenario: req.session.scenario ?? null,
     persona: req.session.persona ?? null,
     turns: req.session.turns ?? [],

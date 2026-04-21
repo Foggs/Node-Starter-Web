@@ -69,6 +69,12 @@ export const GetSessionResponse = zod
       .describe(
         "Whether a voice_id exists in the session (the ID itself is never returned)",
       ),
+    voice_step_completed: zod
+      .boolean()
+      .optional()
+      .describe(
+        "True when the voice step has been completed (clone or fallback). False when not yet reached.",
+      ),
     scenario: zod.string().nullish(),
     persona: zod.string().nullish(),
     turns: zod.array(
@@ -123,6 +129,12 @@ export const UpdateSessionResponse = zod
       .boolean()
       .describe(
         "Whether a voice_id exists in the session (the ID itself is never returned)",
+      ),
+    voice_step_completed: zod
+      .boolean()
+      .optional()
+      .describe(
+        "True when the voice step has been completed (clone or fallback). False when not yet reached.",
       ),
     scenario: zod.string().nullish(),
     persona: zod.string().nullish(),

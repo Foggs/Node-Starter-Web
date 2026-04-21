@@ -7,7 +7,7 @@ import app from "../app.js";
 vi.mock("../lib/elevenlabs.js", () => ({
   synthesizeSpeech: vi.fn(),
   cloneVoice: vi.fn(),
-  deleteVoice: vi.fn(),
+  deleteVoice: vi.fn().mockResolvedValue(undefined),
   ElevenLabsError: class ElevenLabsError extends Error {
     status: number;
     constructor(message: string, status: number) {
@@ -29,7 +29,7 @@ vi.mock("../lib/openai.js", () => ({
   _resetClientForTest: vi.fn(),
 }));
 
-import { synthesizeSpeech, ElevenLabsError } from "../lib/elevenlabs.js";
+import { synthesizeSpeech, cloneVoice, ElevenLabsError } from "../lib/elevenlabs.js";
 import { chatCompletion } from "../lib/openai.js";
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
@@ -45,14 +45,39 @@ async function mintSession(): Promise<string> {
   return sid.split(";")[0]!;
 }
 
+/**
+ * Completes all four onboarding steps so employee-turn and coaching-tip
+ * routes are not blocked by the session-readiness gate.
+ */
 async function configureSession(
   cookie: string,
   persona = "tearful",
 ): Promise<void> {
+  // Step 1 — consent
+  await request(app)
+    .post("/api/consent")
+    .set("Cookie", cookie)
+    .send({ consentGiven: true })
+    .expect(200);
+
+  // Steps 2+3 — scenario + persona
   await request(app)
     .patch("/api/session")
     .set("Cookie", cookie)
     .send({ scenario: "layoff", persona })
+    .expect(200);
+
+  // Step 4 — voice step via fallback
+  vi.mocked(cloneVoice).mockRejectedValueOnce(
+    new ElevenLabsError("Subscription does not include voice cloning", 422),
+  );
+  await request(app)
+    .post("/api/clone-voice")
+    .set("Cookie", cookie)
+    .attach("audio", Buffer.from("fake-audio"), {
+      filename: "recording.webm",
+      contentType: "audio/webm",
+    })
     .expect(200);
 }
 

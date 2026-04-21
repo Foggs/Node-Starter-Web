@@ -28,7 +28,9 @@ describe("sessionMiddleware", () => {
     const res = await request(app).get("/test-session").expect(200);
 
     expect(res.body.consentGiven).toBe(false);
-    expect(res.body.voiceCloned).toBe(false);
+    // voice_cloned starts as undefined (voice step not yet reached);
+    // JSON serialisation omits undefined keys, so the field is absent.
+    expect(res.body.voiceCloned).toBeUndefined();
     expect(res.body.turns).toEqual([]);
     expect(res.body.hasVoiceId).toBe(false);
     expect(res.body.scenario).toBeNull();

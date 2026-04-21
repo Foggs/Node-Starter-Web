@@ -12,6 +12,28 @@ vi.mock("../lib/openai.js", () => ({
 
 import { transcribeAudio, chatCompletion } from "../lib/openai.js";
 
+// ─── mock ElevenLabs (needed for voice-fallback step in getConfiguredSessionCookie) ──
+
+vi.mock("../lib/elevenlabs.js", () => {
+  class ElevenLabsError extends Error {
+    readonly status: number;
+    constructor(message: string, status: number) {
+      super(message);
+      this.name = "ElevenLabsError";
+      this.status = status;
+      Object.setPrototypeOf(this, new.target.prototype);
+    }
+  }
+  return {
+    cloneVoice: vi.fn(),
+    synthesizeSpeech: vi.fn(),
+    deleteVoice: vi.fn().mockResolvedValue(undefined),
+    ElevenLabsError,
+  };
+});
+
+import { cloneVoice, ElevenLabsError } from "../lib/elevenlabs.js";
+
 const VALID_JSON_RESPONSE =
   '{"coachingTip": "Good empathy. Try to be more direct about next steps.", "emotionScore": 6}';
 
@@ -28,19 +50,47 @@ async function getSessionCookie(): Promise<string> {
 }
 
 /**
- * Mint a session cookie and set scenario + persona via PATCH /api/session.
- * This simulates a user who has completed the setup flow.
+ * Mint a session cookie and complete all four onboarding steps:
+ *  1. Biometric consent
+ *  2+3. Scenario + persona selection
+ *  4. Voice step via generic-voice fallback (ElevenLabs mocked to throw)
+ *
+ * This simulates a user who has fully completed the onboarding flow and is
+ * ready to start a session.
  */
 async function getConfiguredSessionCookie(
   scenario = "performance_issue",
   persona = "tearful",
 ): Promise<string> {
   const cookie = await getSessionCookie();
+
+  // Step 1 — consent
+  await request(app)
+    .post("/api/consent")
+    .set("Cookie", cookie)
+    .send({ consentGiven: true })
+    .expect(200);
+
+  // Steps 2+3 — scenario + persona
   await request(app)
     .patch("/api/session")
     .set("Cookie", cookie)
     .send({ scenario, persona })
     .expect(200);
+
+  // Step 4 — voice via fallback path
+  vi.mocked(cloneVoice).mockRejectedValueOnce(
+    new ElevenLabsError("Subscription does not include voice cloning", 422),
+  );
+  await request(app)
+    .post("/api/clone-voice")
+    .set("Cookie", cookie)
+    .attach("audio", Buffer.from("fake-audio"), {
+      filename: "recording.webm",
+      contentType: "audio/webm",
+    })
+    .expect(200);
+
   return cookie;
 }
 
@@ -76,8 +126,9 @@ describe("POST /api/coaching-tip — auth guard", () => {
 // ─── session setup validation ─────────────────────────────────────────────────
 
 describe("POST /api/coaching-tip — session setup validation", () => {
-  it("returns 400 when session has no scenario or persona set", async () => {
+  it("returns 400 with missingStep when consent has not been given", async () => {
     const cookie = await getSessionCookie();
+    // No consent, no scenario, no persona, no voice — missingStep should be 1
     const res = await request(app)
       .post("/api/coaching-tip")
       .set("Cookie", cookie)
@@ -85,11 +136,18 @@ describe("POST /api/coaching-tip — session setup validation", () => {
       .field("turnIndex", "1")
       .expect(400);
     expect(res.body).toHaveProperty("error");
-    expect(res.body.error).toMatch(/configured/i);
+    expect(res.body).toHaveProperty("missingStep", 1);
   });
 
-  it("returns 400 when session has scenario but no persona", async () => {
+  it("returns 400 with missingStep when scenario is set but persona is missing", async () => {
     const cookie = await getSessionCookie();
+    // Give consent first so the check advances past step 1
+    await request(app)
+      .post("/api/consent")
+      .set("Cookie", cookie)
+      .send({ consentGiven: true })
+      .expect(200);
+    // Set scenario only, no persona → missingStep should be 3
     await request(app)
       .patch("/api/session")
       .set("Cookie", cookie)
@@ -103,6 +161,7 @@ describe("POST /api/coaching-tip — session setup validation", () => {
       .field("turnIndex", "1")
       .expect(400);
     expect(res.body).toHaveProperty("error");
+    expect(res.body).toHaveProperty("missingStep", 3);
   });
 });
 
