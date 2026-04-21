@@ -19,6 +19,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import {
   ApiError,
+  getGetSessionQueryKey,
   useGenerateEmployeeTurn,
   useGetCoachingTip,
   useGetSession,
@@ -294,7 +295,11 @@ export default function Session() {
   >("checking");
 
   const sessionReadyQuery = useGetSession({
-    query: { enabled: sessionReady === "checking", retry: false },
+    query: {
+      queryKey: getGetSessionQueryKey(),
+      enabled: sessionReady === "checking",
+      retry: false,
+    },
   });
 
   // ── checkpoint recovery ──

@@ -91,9 +91,11 @@ export interface Turn {
  */
 export interface SessionState {
   consent_given: boolean;
-  voice_cloned: boolean;
+  voice_cloned?: boolean | null;
   /** Whether a voice_id exists in the session (the ID itself is never returned) */
   voice_id_present: boolean;
+  /** True when the voice step is complete (cloned OR fallback taken) */
+  voice_step_completed: boolean;
   scenario?: string | null;
   persona?: string | null;
   turns: Turn[];
