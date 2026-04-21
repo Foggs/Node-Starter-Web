@@ -38,6 +38,14 @@ import {
   useSynthesizeEmployeeVoice,
 } from "@workspace/api-client-react";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
+import { categorizeMicError } from "@/lib/micErrors";
+import {
+  useListScenarios,
+  useListPersonas,
+  getListScenariosQueryKey,
+  getListPersonasQueryKey,
+} from "@workspace/api-client-react";
+import type { Scenario, Persona } from "@workspace/api-client-react";
 
 // ─── types ────────────────────────────────────────────────────────────────────
 
@@ -126,12 +134,16 @@ function EmotionBadge({ score }: { score: number }) {
 
 interface RecoveryBannerProps {
   checkpoint: Checkpoint;
+  scenarioName?: string;
+  personaName?: string;
   onResume: () => void;
   onDiscard: () => void;
 }
 
 function SessionRecoveryBanner({
   checkpoint,
+  scenarioName,
+  personaName,
   onResume,
   onDiscard,
 }: RecoveryBannerProps) {
@@ -140,6 +152,8 @@ function SessionRecoveryBanner({
   ).length;
   const savedAgo = Math.round((Date.now() - checkpoint.savedAt) / 60000);
   const agoLabel = savedAgo < 1 ? "just now" : `${savedAgo} min ago`;
+  const nextTurn = Math.min(completedManagerTurns + 1, 5);
+  const contextLine = [scenarioName, personaName].filter(Boolean).join(" · ");
 
   return (
     <Card className="border-amber-300 bg-amber-50 mb-4">
@@ -148,7 +162,10 @@ function SessionRecoveryBanner({
           <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-amber-900">
-              Unsaved session found
+              Resume turn {nextTurn} of 5
+              {contextLine && (
+                <span className="font-normal text-amber-800"> — {contextLine}</span>
+              )}
             </p>
             <p className="text-xs text-amber-700 mt-0.5">
               {completedManagerTurns} of 5 manager turn
@@ -495,12 +512,31 @@ export default function Session() {
   const [sessionReady, setSessionReady] = useState<
     "checking" | "ready" | "redirecting"
   >("checking");
+  const [redirectReason, setRedirectReason] = useState<{
+    step: 1 | 2 | 3 | 4;
+    label: string;
+    target: string;
+  } | null>(null);
 
   const sessionReadyQuery = useGetSession({
     query: {
       queryKey: getGetSessionQueryKey(),
       enabled: sessionReady === "checking",
       retry: false,
+    },
+  });
+
+  // Used to enrich the recovery banner with friendly names.
+  const { data: scenariosForBanner } = useListScenarios<Scenario[]>({
+    query: {
+      queryKey: getListScenariosQueryKey(),
+      enabled: sessionReady === "ready",
+    },
+  });
+  const { data: personasForBanner } = useListPersonas<Persona[]>({
+    query: {
+      queryKey: getListPersonasQueryKey(),
+      enabled: sessionReady === "ready",
     },
   });
 
@@ -541,29 +577,35 @@ export default function Session() {
     const { data, isError } = sessionReadyQuery;
     if (!data && !isError) return; // still loading
 
-    if (isError || !data) {
-      navigate("/");
+    function redirectAfterDelay(
+      step: 1 | 2 | 3 | 4,
+      label: string,
+      target: string,
+    ) {
+      setRedirectReason({ step, label, target });
       setSessionReady("redirecting");
+      // Brief pause so the interstitial is announced and visible.
+      window.setTimeout(() => navigate(target), 1200);
+    }
+
+    if (isError || !data) {
+      redirectAfterDelay(1, "the start", "/");
       return;
     }
     if (!data.consent_given) {
-      navigate("/consent");
-      setSessionReady("redirecting");
+      redirectAfterDelay(1, "Biometric Consent", "/consent");
       return;
     }
     if (!data.scenario) {
-      navigate("/setup");
-      setSessionReady("redirecting");
+      redirectAfterDelay(2, "Scenario selection", "/setup");
       return;
     }
     if (!data.persona) {
-      navigate("/setup");
-      setSessionReady("redirecting");
+      redirectAfterDelay(3, "Persona selection", "/setup");
       return;
     }
     if (!data.voice_step_completed) {
-      navigate("/onboarding");
-      setSessionReady("redirecting");
+      redirectAfterDelay(4, "Voice setup", "/onboarding");
       return;
     }
     setSessionReady("ready");
@@ -690,11 +732,9 @@ export default function Session() {
       recorderRef.current = recorder;
       recorder.start();
       setPhase({ tag: "recording", turnNum });
-    } catch {
-      // Microphone access denied — show a brief error state
-      setFetchError(
-        "Microphone access is required. Please allow microphone permission and try again.",
-      );
+    } catch (err) {
+      const info = categorizeMicError(err);
+      setFetchError(`${info.title}. ${info.body}`);
     }
   }, [phase]);
 
@@ -815,9 +855,37 @@ export default function Session() {
 
   // ─── render ───────────────────────────────────────────────────────────────
 
-  // Show a minimal spinner while verifying session readiness.
-  // All data effects are also gated so nothing fires before this resolves.
+  // Show a minimal spinner while verifying session readiness, or a brief
+  // interstitial when we're sending the user back to an earlier onboarding
+  // step. The interstitial uses an aria-live region so assistive tech
+  // announces *why* the page is changing instead of silently navigating.
   if (sessionReady !== "ready") {
+    if (sessionReady === "redirecting" && redirectReason) {
+      return (
+        <AppShell>
+          <div
+            role="status"
+            aria-live="polite"
+            className="max-w-md mx-auto mt-16"
+          >
+            <Card className="border-amber-200 bg-amber-50">
+              <CardContent className="pt-5 pb-5 flex items-start gap-3">
+                <Loader2 className="w-5 h-5 text-amber-500 animate-spin shrink-0 mt-0.5" aria-hidden="true" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-amber-900">
+                    Finishing onboarding first
+                  </p>
+                  <p className="text-xs text-amber-800 mt-0.5">
+                    Step {redirectReason.step} of 4 ({redirectReason.label}) isn't
+                    complete yet — taking you back to finish it.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        </AppShell>
+      );
+    }
     return (
       <AppShell>
         <div className="flex items-center justify-center h-64">
@@ -826,6 +894,15 @@ export default function Session() {
       </AppShell>
     );
   }
+
+  const scenarioNameForBanner = pendingCheckpoint
+    ? scenariosForBanner?.find((s) => s.id === sessionReadyQuery.data?.scenario)
+        ?.name
+    : undefined;
+  const personaNameForBanner = pendingCheckpoint
+    ? personasForBanner?.find((p) => p.id === sessionReadyQuery.data?.persona)
+        ?.name
+    : undefined;
 
   return (
     <AppShell>
@@ -869,6 +946,8 @@ export default function Session() {
         {pendingCheckpoint && (
           <SessionRecoveryBanner
             checkpoint={pendingCheckpoint}
+            scenarioName={scenarioNameForBanner}
+            personaName={personaNameForBanner}
             onResume={handleResume}
             onDiscard={handleDiscard}
           />

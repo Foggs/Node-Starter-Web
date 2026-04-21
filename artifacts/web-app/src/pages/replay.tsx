@@ -19,6 +19,7 @@ import {
   useGenerateImprovedReplay,
   type ImprovedTurn,
 } from "@workspace/api-client-react";
+import { categorizeApiError } from "@/lib/apiErrors";
 
 // ─── audio player ─────────────────────────────────────────────────────────────
 
@@ -221,17 +222,21 @@ export default function Replay() {
         </div>
 
         {/* Error */}
-        {isError && (
-          <Card className="border-red-200 bg-red-50 mb-6">
+        {isError && (() => {
+          const info = categorizeApiError(
+            replayMutation.error,
+            "Generating the improved replay",
+          );
+          return (
+          <Card className="border-red-200 bg-red-50 mb-6" role="alert">
             <CardContent className="pt-4 pb-4 flex items-start gap-3">
-              <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
+              <AlertTriangle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" aria-hidden="true" />
               <div className="flex-1 min-w-0">
                 <p className="text-sm font-medium text-red-800">
-                  Could not generate improved replay
+                  {info.title}
                 </p>
                 <p className="text-xs text-red-600 mt-0.5">
-                  The session may have expired or the AI is temporarily
-                  unavailable.
+                  {info.body}
                 </p>
               </div>
               <Button
@@ -244,7 +249,8 @@ export default function Replay() {
               </Button>
             </CardContent>
           </Card>
-        )}
+          );
+        })()}
 
         {/* Loading skeleton */}
         {isLoading && <ReplaySkeleton />}

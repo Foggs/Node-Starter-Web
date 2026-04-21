@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
-import { Settings2, ArrowRight, AlertCircle, Loader2, Bookmark, Plus, X } from "lucide-react";
+import { Settings2, ArrowRight, AlertCircle, Loader2, Bookmark, Plus, X, RefreshCw } from "lucide-react";
 import {
   useListScenarios,
   useListPersonas,
@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
+import { categorizeApiError } from "@/lib/apiErrors";
 
 const PERSONA_EMOJI: Record<string, string> = {
   tearful: "😢",
@@ -70,11 +71,35 @@ function LoadingGrid() {
   );
 }
 
-function ErrorCard({ message }: { message: string }) {
+function ErrorCard({
+  title,
+  body,
+  onRetry,
+}: {
+  title: string;
+  body: string;
+  onRetry?: () => void;
+}) {
   return (
-    <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
-      <AlertCircle className="w-4 h-4 shrink-0" />
-      {message}
+    <div
+      role="alert"
+      className="flex items-start gap-3 p-4 bg-red-50 border border-red-200 rounded-xl"
+    >
+      <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" aria-hidden="true" />
+      <div className="flex-1 min-w-0 text-sm">
+        <p className="font-medium text-red-800">{title}</p>
+        <p className="text-xs text-red-600 mt-0.5">{body}</p>
+      </div>
+      {onRetry && (
+        <Button
+          size="sm"
+          variant="outline"
+          className="border-red-300 text-red-700 gap-1 shrink-0"
+          onClick={onRetry}
+        >
+          <RefreshCw className="w-3.5 h-3.5" /> Retry
+        </Button>
+      )}
     </div>
   );
 }
@@ -143,7 +168,10 @@ function pickDefaultPersona(personas: Persona[]): string | null {
 export default function Setup() {
   const [selectedScenario, setSelectedScenario] = useState<string | null>(null);
   const [selectedPersona, setSelectedPersona] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState(false);
+  const [saveError, setSaveError] = useState<{ title: string; body: string } | null>(null);
+  const lastSavePayloadRef = useRef<{
+    data: { scenario?: string; persona?: string };
+  } | null>(null);
   const [presets, setPresets] = useState<Preset[]>(() => loadPresets());
   const [showSaveForm, setShowSaveForm] = useState(false);
   const [newPresetName, setNewPresetName] = useState("");
@@ -153,21 +181,29 @@ export default function Setup() {
   const {
     data: scenarios,
     isLoading: scenariosLoading,
-    isError: scenariosError,
+    error: scenariosErrorObj,
+    refetch: refetchScenarios,
   } = useListScenarios<Scenario[]>();
+  const scenariosError = !!scenariosErrorObj;
 
   const {
     data: personas,
     isLoading: personasLoading,
-    isError: personasError,
+    error: personasErrorObj,
+    refetch: refetchPersonas,
   } = useListPersonas<Persona[]>();
+  const personasError = !!personasErrorObj;
 
   const { mutate: saveSession, isPending: isSaving } = useUpdateSession({
     mutation: {
-      onError: () => setSaveError(true),
-      onSuccess: () => setSaveError(false),
+      onError: (err) => setSaveError(categorizeApiError(err, "Saving your selection")),
+      onSuccess: () => setSaveError(null),
     },
   });
+
+  function retrySave() {
+    if (lastSavePayloadRef.current) saveSession(lastSavePayloadRef.current);
+  }
 
   // Apply smart defaults once both lists have loaded — restore the user's last
   // choice (from localStorage), or fall back to the first scenario and a
@@ -189,35 +225,37 @@ export default function Setup() {
     defaultsAppliedRef.current = true;
     setSelectedScenario(scenarioId);
     if (personaId) setSelectedPersona(personaId);
-    saveSession({
-      data: personaId ? { scenario: scenarioId, persona: personaId } : { scenario: scenarioId },
-    });
+    const payload = {
+      data: personaId
+        ? { scenario: scenarioId, persona: personaId }
+        : { scenario: scenarioId },
+    };
+    lastSavePayloadRef.current = payload;
+    saveSession(payload);
   }, [scenarios, personas, saveSession]);
 
   function handleScenarioSelect(id: string) {
     setSelectedScenario(id);
-    setSaveError(false);
-    saveSession(
-      { data: { scenario: id } },
-      {
-        onSuccess: () => {
-          savePrefs({ ...loadPrefs(), scenarioId: id });
-        },
+    setSaveError(null);
+    const payload = { data: { scenario: id } };
+    lastSavePayloadRef.current = payload;
+    saveSession(payload, {
+      onSuccess: () => {
+        savePrefs({ ...loadPrefs(), scenarioId: id });
       },
-    );
+    });
   }
 
   function handlePersonaSelect(id: string) {
     setSelectedPersona(id);
-    setSaveError(false);
-    saveSession(
-      { data: { persona: id } },
-      {
-        onSuccess: () => {
-          savePrefs({ ...loadPrefs(), personaId: id });
-        },
+    setSaveError(null);
+    const payload = { data: { persona: id } };
+    lastSavePayloadRef.current = payload;
+    saveSession(payload, {
+      onSuccess: () => {
+        savePrefs({ ...loadPrefs(), personaId: id });
       },
-    );
+    });
   }
 
   function handleApplyPreset(preset: Preset) {
@@ -226,15 +264,16 @@ export default function Setup() {
     if (!scenarioExists || !personaExists) return;
     setSelectedScenario(preset.scenarioId);
     setSelectedPersona(preset.personaId);
-    setSaveError(false);
-    saveSession(
-      { data: { scenario: preset.scenarioId, persona: preset.personaId } },
-      {
-        onSuccess: () => {
-          savePrefs({ scenarioId: preset.scenarioId, personaId: preset.personaId });
-        },
+    setSaveError(null);
+    const payload = {
+      data: { scenario: preset.scenarioId, persona: preset.personaId },
+    };
+    lastSavePayloadRef.current = payload;
+    saveSession(payload, {
+      onSuccess: () => {
+        savePrefs({ scenarioId: preset.scenarioId, personaId: preset.personaId });
       },
-    );
+    });
   }
 
   function handleSaveCurrentAsPreset() {
@@ -414,9 +453,10 @@ export default function Setup() {
           </div>
 
           {scenariosLoading && <LoadingGrid />}
-          {scenariosError && (
-            <ErrorCard message="We can't reach the practice server right now. Check your connection and try again." />
-          )}
+          {scenariosError && (() => {
+            const info = categorizeApiError(scenariosErrorObj, "Loading scenarios");
+            return <ErrorCard title={info.title} body={info.body} onRetry={() => refetchScenarios()} />;
+          })()}
           {scenarios && (
             <SelectionGrid
               items={scenarios}
@@ -440,9 +480,10 @@ export default function Setup() {
           </div>
 
           {personasLoading && <LoadingGrid />}
-          {personasError && (
-            <ErrorCard message="We can't reach the practice server right now. Check your connection and try again." />
-          )}
+          {personasError && (() => {
+            const info = categorizeApiError(personasErrorObj, "Loading personas");
+            return <ErrorCard title={info.title} body={info.body} onRetry={() => refetchPersonas()} />;
+          })()}
           {personas && (
             <SelectionGrid
               items={personas}
@@ -472,9 +513,8 @@ export default function Setup() {
         )}
 
         {saveError && (
-          <div className="flex items-center gap-2 mb-4 text-xs text-red-600">
-            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
-            Could not save your selection — check your connection and try again.
+          <div className="mb-4">
+            <ErrorCard title={saveError.title} body={saveError.body} onRetry={retrySave} />
           </div>
         )}
 

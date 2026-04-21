@@ -1,12 +1,13 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { ShieldCheck, AlertTriangle, ArrowRight, Loader2 } from "lucide-react";
+import { ShieldCheck, AlertTriangle, ArrowRight, Loader2, RefreshCw } from "lucide-react";
 import { useRecordConsent } from "@workspace/api-client-react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
+import { categorizeApiError } from "@/lib/apiErrors";
 
 export default function Consent() {
   const [checked, setChecked] = useState(false);
@@ -26,7 +27,7 @@ export default function Consent() {
   }
 
   const apiError = mutation.isError
-    ? "Could not record consent — please check your connection and try again."
+    ? categorizeApiError(mutation.error, "Recording consent")
     : null;
 
   return (
@@ -110,9 +111,24 @@ export default function Consent() {
 
         {/* Inline API error */}
         {apiError && (
-          <div className="flex gap-2 items-start bg-red-50 border border-red-200 rounded-lg p-3 mb-6 text-sm text-red-700">
-            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" />
-            <span>{apiError}</span>
+          <div
+            role="alert"
+            className="flex gap-3 items-start bg-red-50 border border-red-200 rounded-lg p-3 mb-6"
+          >
+            <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-red-500" aria-hidden="true" />
+            <div className="flex-1 min-w-0 text-sm">
+              <p className="font-medium text-red-800">{apiError.title}</p>
+              <p className="text-xs text-red-600 mt-0.5">{apiError.body}</p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-red-300 text-red-700 gap-1 shrink-0"
+              onClick={handleContinue}
+              disabled={!checked || mutation.isPending}
+            >
+              <RefreshCw className="w-3.5 h-3.5" /> Try again
+            </Button>
           </div>
         )}
 

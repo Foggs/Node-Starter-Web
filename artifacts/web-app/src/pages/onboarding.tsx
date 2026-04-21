@@ -18,6 +18,7 @@ import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { categorizeMicError } from "@/lib/micErrors";
 
 // ─── types ───────────────────────────────────────────────────────────────────
 
@@ -179,11 +180,10 @@ export default function Onboarding() {
     let stream: MediaStream;
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch {
-      setErrorMsg(
-        "Microphone access was denied. Please allow access in your browser settings and reload.",
-      );
-      setIsMicError(true);
+    } catch (err) {
+      const info = categorizeMicError(err);
+      setErrorMsg(`${info.title}. ${info.body}`);
+      setIsMicError(info.isPermission);
       setPhase("error");
       return;
     }
