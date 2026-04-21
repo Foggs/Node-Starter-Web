@@ -512,6 +512,15 @@ export default function Feedback() {
         body: "Please try again. If this keeps happening, start a new session.",
       };
     }
+    if (
+      (typeof DOMException !== "undefined" && err instanceof DOMException && err.name === "AbortError") ||
+      (err instanceof Error && err.name === "AbortError")
+    ) {
+      return {
+        title: "The report took too long to generate",
+        body: "The server is busy. Wait a moment and try again.",
+      };
+    }
     if (err instanceof TypeError) {
       return {
         title: "You appear to be offline",
