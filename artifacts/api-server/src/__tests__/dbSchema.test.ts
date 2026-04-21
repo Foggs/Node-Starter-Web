@@ -55,7 +55,7 @@ describe("sessionsTable — column definitions", () => {
 
   it("does NOT have a voice_id column (voice_id must never be persisted)", () => {
     // voice_id stays in Express session memory only — never written to disk/DB
-    expect((sessionsTable as Record<string, unknown>)["voice_id"]).toBeUndefined();
+    expect((sessionsTable as unknown as Record<string, unknown>)["voice_id"]).toBeUndefined();
   });
 });
 
