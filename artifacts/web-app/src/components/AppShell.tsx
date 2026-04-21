@@ -49,7 +49,7 @@ export function AppShell({ children, hideNav = false }: AppShellProps) {
                         {i > 0 && (
                           <span
                             aria-hidden="true"
-                            className="text-slate-400 text-xs mx-1"
+                            className="text-slate-600 text-xs mx-1"
                           >
                             ›
                           </span>
