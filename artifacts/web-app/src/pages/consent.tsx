@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { ShieldCheck, AlertTriangle, ArrowRight, Loader2, RefreshCw } from "lucide-react";
-import { useRecordConsent } from "@workspace/api-client-react";
+import { ping, useRecordConsent } from "@workspace/api-client-react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -21,9 +21,39 @@ export default function Consent() {
     },
   });
 
-  function handleContinue() {
-    if (!checked || mutation.isPending) return;
-    mutation.mutate({ data: { consentGiven: true } });
+  // Bootstrap the express-session cookie on mount.  Landing and Consent make
+  // no other API calls before the consent POST, so without this probe the
+  // first POST /api/consent arrives with no `connect.sid` and is rejected by
+  // sessionGuard as "No active session".  Issuing a GET first lets the server
+  // create + Set-Cookie a fresh session that the subsequent POST will carry.
+  const sessionBootstrap = useRef<Promise<unknown> | null>(null);
+  useEffect(() => {
+    sessionBootstrap.current = ping().catch(() => null);
+  }, []);
+
+  // Local lock that covers the bootstrap-await window.  `mutation.isPending`
+  // only flips once `mutate` actually runs, so without this guard a fast
+  // double-click while the ping is still in flight would queue a second
+  // mutation.
+  const submittingRef = useRef(false);
+  const [submitting, setSubmitting] = useState(false);
+
+  async function handleContinue() {
+    if (!checked || mutation.isPending || submittingRef.current) return;
+    submittingRef.current = true;
+    setSubmitting(true);
+    try {
+      // Guarantee the bootstrap probe has settled before submitting, so the
+      // POST always carries the session cookie even when the user clicks
+      // Continue faster than the probe can complete.
+      if (sessionBootstrap.current) {
+        await sessionBootstrap.current;
+      }
+      mutation.mutate({ data: { consentGiven: true } });
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
   }
 
   const apiError = mutation.isError
@@ -125,7 +155,7 @@ export default function Consent() {
               variant="outline"
               className="border-red-300 text-red-700 gap-1 shrink-0"
               onClick={handleContinue}
-              disabled={!checked || mutation.isPending}
+              disabled={!checked || mutation.isPending || submitting}
             >
               <RefreshCw className="w-3.5 h-3.5" /> Try again
             </Button>
@@ -140,10 +170,10 @@ export default function Consent() {
           </Link>
           <Button
             onClick={handleContinue}
-            disabled={!checked || mutation.isPending}
+            disabled={!checked || mutation.isPending || submitting}
             className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold gap-2 disabled:opacity-40"
           >
-            {mutation.isPending ? (
+            {mutation.isPending || submitting ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
                 Saving…
