@@ -1,0 +1,239 @@
+Use the agent-skills workflows and personas for this task:
+- /plan  → map the current rewrite logic before touching any code
+- /build → implement the variety system incrementally
+- /test  → apply the Prove-It pattern using the exact test below
+- /review → five-axis code-reviewer audit before closing
+
+---
+
+## Task: Add rewrite variety to the Improved Replay
+
+## Problem
+
+Every improved manager turn currently opens with the same sentence
+structure — "I see that you're...", "I can see that...", "I want
+to acknowledge that..." — regardless of turn number, scenario,
+persona, or what the employee just said. After 5 turns, the
+rewrites feel templated and robotic, which directly undermines the
+product's core promise of sounding like a better version of YOU.
+
+---
+
+## Activate: test-engineer persona — Prove-It baseline FIRST
+
+You are a QA Engineer applying the Prove-It pattern.
+STOP. Do not write any implementation code yet.
+Create this exact test file first and run it.
+
+Create file: tests/improvedReplay.variety.test.ts
+
+Paste this test exactly as written — do not modify it:
+
+describe('improvedReplay rewrite variety', () => {
+  it('FAILS: all 5 turns currently open with the same sentence
+     structure', async () => {
+    const rewrites = await generateRewrites(mockSession)
+    const openingPhrases = rewrites.map(t =>
+      t.improved.split(' ').slice(0, 4).join(' ').toLowerCase()
+    )
+    const uniqueOpenings = new Set(openingPhrases)
+    // This SHOULD fail today — proves the problem exists
+    expect(uniqueOpenings.size).toBeGreaterThan(2)
+  })
+})
+
+Run the test and confirm it FAILS before writing a single line
+of implementation code. Paste the failing test output as a
+comment in the file. This is the Prove-It baseline.
+
+mockSession should be constructed as a realistic 5-turn
+Performance Issue / Tearful persona session using the existing
+session state shape:
+
+{
+  scenario: "performance_issue",
+  persona: "tearful",
+  turns: [
+    { turn_index: 1, role: "manager", transcript: "Hi, I want
+      to talk to you about your performance over the last
+      quarter." },
+    { turn_index: 2, role: "manager", transcript: "I understand
+      this is hard, but the targets were clearly missed." },
+    { turn_index: 3, role: "manager", transcript: "We do need
+      to make a decision here about next steps." },
+    { turn_index: 4, role: "manager", transcript: "We will
+      support you through whatever comes next." },
+    { turn_index: 5, role: "manager", transcript: "I hope you
+      feel we have handled this with respect." }
+  ]
+}
+
+---
+
+## Additional tests (write these AFTER the baseline fails)
+
+Once the failing baseline is confirmed, add these 5 cases to
+the same test file:
+
+Test 2: No two consecutive turns open with the same first 3 words
+Test 3: Turn 1 rewrite does not open with an empathy phrase —
+        must not start with "I see", "I understand", "I can see",
+        "I want to acknowledge", or "I know this"
+Test 4: Turn 5 rewrite ends with a forward-looking statement,
+        not an open question (must not end with "?")
+Test 5: Same transcript run through "tearful" persona vs "angry"
+        persona produces different opening tone — assert the
+        first 10 words of Turn 1 are not identical across both
+Test 6: None of the 5 turns contain any of these banned openers:
+        "I see that", "I can see that", "I understand that",
+        "I want to acknowledge"
+
+All 6 tests must FAIL before implementation begins.
+All 6 tests must PASS before the code-reviewer pass begins.
+
+---
+
+## Incremental implementation plan (follow this order)
+
+**Slice 1 — Audit the current rewrite prompt**
+- Find the GPT-4o-mini system prompt used in
+  POST /api/improved-replay
+- Print the full prompt as-is — do not change it
+- Identify exactly what instruction (or lack of instruction)
+  is causing the repetitive openers
+- Document the finding as a code comment before proceeding
+
+**Slice 2 — Define the variety system**
+
+Add the following rules to the rewrite system prompt:
+
+TURN-BY-TURN OPENER RULES:
+
+Turn 1: Lead with the purpose of the meeting. Be direct.
+  Do not open with empathy or acknowledgment of feelings.
+  Register: "I want to be direct with you about..."
+
+Turn 2: Respond to what the employee said. Acknowledge
+  their specific point before redirecting.
+  Register: "I hear that you feel... and I also need us
+  to be clear about..."
+
+Turn 3: Hold the position. Open with a calm, firm restatement.
+  Do not re-litigate the decision.
+  Register: "This decision is final. I want to focus on
+  what happens next..."
+
+Turn 4: Move toward resolution. Bridge from difficulty
+  to the path forward.
+  Register: "I know this is hard to hear. Here is what
+  support looks like from here..."
+
+Turn 5: Close with clarity and dignity. Open with a
+  forward-looking statement. Give the employee something
+  concrete to hold onto. Do not end with a question.
+  Register: "Before we finish, I want to make sure you
+  are clear on next steps..."
+
+GLOBAL RULES (all turns):
+- Never open two consecutive turns with the same first 3 words
+- Never use these openers in any turn:
+    "I see that"
+    "I can see that"
+    "I understand that"
+    "I want to acknowledge"
+- Vary sentence length across turns
+- Match emotional register to persona:
+    tearful      → warmer tone, shorter sentences, slower pacing
+    defensive    → calm, firm, non-reactive, no hedging language
+    angry        → de-escalating, steady, no mirroring of hostility
+    withdrawn    → gentle, direct, fill silence with clarity
+    professional → peer-to-peer tone, efficient, respectful
+
+**Slice 3 — Inject turn_index and persona into the prompt**
+
+The rewrite prompt must receive:
+- turn_index (1–5) to apply the correct opener rule
+- persona to apply the correct emotional register
+- employee_transcript for that turn so the rewrite responds
+  to what was actually said
+
+Confirm these values are available where the prompt is built.
+If not, trace them through session state and thread them in.
+
+**Slice 4 — Run the full test suite**
+- Re-run all 6 tests
+- All 6 must pass before proceeding to the code-reviewer pass
+- If any test fails, fix before proceeding — do not skip
+
+---
+
+## Activate: code-reviewer persona
+
+You are a Staff Engineer. Apply five-axis review to the rewrite
+prompt changes and any code that constructs or calls it:
+
+1. Correctness — Does the prompt reliably produce structurally
+   different openers across all 5 turns? Are turn_index and
+   persona correctly threaded through to the prompt builder?
+   Does the tearful vs angry persona test produce different tone?
+
+2. Readability — Is the prompt logic self-documenting? Are the
+   turn-by-turn rules easy to update independently?
+
+3. Architecture — Are variety rules defined in one place?
+   If rules need to change for a new persona or sub-type,
+   is there a single location to update them? Should
+   turn-by-turn rules live in a config object rather than
+   inline in the prompt string?
+
+4. Performance — Does adding turn_index and persona context
+   increase prompt token count beyond the 3s latency target
+   for GPT-4o-mini?
+
+5. Edge cases — What happens if turn_index is undefined or
+   out of range? What if persona is not one of the 5 known
+   values? Does the prompt degrade gracefully?
+
+Flag issues as: Blocker / Optional / Nit
+No Blockers may remain open when the task closes.
+
+---
+
+## Constraints
+- Backend-only change — POST /api/improved-replay prompt only
+- No changes to the ImprovedReplay frontend component
+- No changes to session state shape or field names
+- Banned openers are a hard constraint — if GPT-4o-mini still
+  produces one, that is a Blocker in the code-reviewer pass
+- Run `pnpm run typecheck` after Slice 4
+
+---
+
+## Acceptance checklist
+
+### Prove-It (test-engineer)
+- [ ] Test file created at tests/improvedReplay.variety.test.ts
+- [ ] Baseline test confirmed FAILING before any code change
+- [ ] Failing test output pasted as comment in test file
+- [ ] All 6 tests passing after implementation
+
+### Implementation
+- [ ] Turn 1 is direct and purpose-led — no empathy opener
+- [ ] Turn 2 responds to the employee's specific point
+- [ ] Turn 3 holds position without re-litigating
+- [ ] Turn 4 bridges to resolution and support
+- [ ] Turn 5 closes with a forward-looking concrete statement,
+      no trailing question mark
+- [ ] No two consecutive turns open with the same first 3 words
+- [ ] All 4 banned openers never appear in any rewrite output
+- [ ] turn_index and persona are passed to the prompt builder
+
+### Code review (code-reviewer)
+- [ ] No Blockers flagged
+- [ ] Variety rules defined in a single maintainable location
+- [ ] Prompt token increase within GPT-4o-mini latency target
+- [ ] Graceful degradation confirmed for unknown turn_index
+      or persona values
+
+### Final gate
+- [ ] `pnpm run typecheck` passes with no errors
