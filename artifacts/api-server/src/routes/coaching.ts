@@ -267,7 +267,7 @@ function checkSessionReady(session: {
   // voice_cloned has been explicitly set to false (fallback taken).
   // An undefined voice_cloned means the step was never reached.
   const voiceStepDone =
-    session.voice_id !== undefined || session.voice_cloned === false;
+    Boolean(session.voice_id) || session.voice_cloned === false;
   if (!voiceStepDone) return { valid: false, missingStep: 4 };
   return { valid: true };
 }
