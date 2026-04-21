@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { Link, useLocation } from "wouter";
-import { Settings2, ArrowRight, AlertCircle, Loader2 } from "lucide-react";
+import { Settings2, ArrowRight, AlertCircle, Loader2, Bookmark, Plus, X } from "lucide-react";
 import {
   useListScenarios,
   useListPersonas,
@@ -80,9 +80,39 @@ function ErrorCard({ message }: { message: string }) {
 }
 
 const PREFS_KEY = "exit-coach-setup-prefs";
+const PRESETS_KEY = "exit-coach-setup-presets";
+const MAX_PRESETS = 5;
 const DEFAULT_PERSONA_ORDER = ["professional", "tearful", "defensive", "withdrawn", "angry"];
 
 type Prefs = { scenarioId?: string; personaId?: string };
+type Preset = { id: string; name: string; scenarioId: string; personaId: string };
+
+function loadPresets(): Preset[] {
+  try {
+    const raw = localStorage.getItem(PRESETS_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter(
+      (p): p is Preset =>
+        p &&
+        typeof p.id === "string" &&
+        typeof p.name === "string" &&
+        typeof p.scenarioId === "string" &&
+        typeof p.personaId === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
+function savePresets(presets: Preset[]) {
+  try {
+    localStorage.setItem(PRESETS_KEY, JSON.stringify(presets));
+  } catch {
+    // localStorage unavailable — silently ignore
+  }
+}
 
 function loadPrefs(): Prefs {
   try {
@@ -114,6 +144,9 @@ export default function Setup() {
   const [selectedScenario, setSelectedScenario] = useState<string | null>(null);
   const [selectedPersona, setSelectedPersona] = useState<string | null>(null);
   const [saveError, setSaveError] = useState(false);
+  const [presets, setPresets] = useState<Preset[]>(() => loadPresets());
+  const [showSaveForm, setShowSaveForm] = useState(false);
+  const [newPresetName, setNewPresetName] = useState("");
   const [, navigate] = useLocation();
   const defaultsAppliedRef = useRef(false);
 
@@ -187,6 +220,52 @@ export default function Setup() {
     );
   }
 
+  function handleApplyPreset(preset: Preset) {
+    const scenarioExists = scenarios?.find((s) => s.id === preset.scenarioId);
+    const personaExists = personas?.find((p) => p.id === preset.personaId);
+    if (!scenarioExists || !personaExists) return;
+    setSelectedScenario(preset.scenarioId);
+    setSelectedPersona(preset.personaId);
+    setSaveError(false);
+    saveSession(
+      { data: { scenario: preset.scenarioId, persona: preset.personaId } },
+      {
+        onSuccess: () => {
+          savePrefs({ scenarioId: preset.scenarioId, personaId: preset.personaId });
+        },
+      },
+    );
+  }
+
+  function handleSaveCurrentAsPreset() {
+    const name = newPresetName.trim();
+    if (!name || !selectedScenario || !selectedPersona) return;
+    const next: Preset[] = [
+      ...presets.filter((p) => p.name.toLowerCase() !== name.toLowerCase()),
+      {
+        id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        name,
+        scenarioId: selectedScenario,
+        personaId: selectedPersona,
+      },
+    ].slice(-MAX_PRESETS);
+    setPresets(next);
+    savePresets(next);
+    setNewPresetName("");
+    setShowSaveForm(false);
+  }
+
+  function handleDeletePreset(id: string) {
+    const next = presets.filter((p) => p.id !== id);
+    setPresets(next);
+    savePresets(next);
+  }
+
+  const canSavePreset =
+    selectedScenario !== null &&
+    selectedPersona !== null &&
+    presets.length < MAX_PRESETS;
+
   const canBegin = selectedScenario !== null && selectedPersona !== null && !isSaving;
 
   return (
@@ -205,6 +284,121 @@ export default function Setup() {
             </h1>
           </div>
         </div>
+
+        {/* Saved setups */}
+        <section className="mb-8">
+          <div className="flex items-center justify-between mb-3">
+            <h2 className="text-sm font-semibold text-slate-700 uppercase tracking-wide flex items-center gap-2">
+              <Bookmark className="w-3.5 h-3.5" />
+              Saved setups
+            </h2>
+            {canSavePreset && !showSaveForm && (
+              <button
+                onClick={() => setShowSaveForm(true)}
+                className="text-xs font-medium text-amber-600 hover:text-amber-700 flex items-center gap-1"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Save current
+              </button>
+            )}
+          </div>
+
+          {presets.length === 0 && !showSaveForm && (
+            <p className="text-xs text-slate-500">
+              No saved setups yet. Pick a scenario and persona below, then save the pair as a preset for one-click reuse.
+            </p>
+          )}
+
+          {presets.length > 0 && (
+            <div className="flex flex-wrap gap-2 mb-3">
+              {presets.map((preset) => {
+                const isActive =
+                  preset.scenarioId === selectedScenario &&
+                  preset.personaId === selectedPersona;
+                const isAvailable =
+                  !!scenarios?.find((s) => s.id === preset.scenarioId) &&
+                  !!personas?.find((p) => p.id === preset.personaId);
+                return (
+                  <div
+                    key={preset.id}
+                    className={cn(
+                      "group flex items-center rounded-full border-2 transition-all",
+                      isActive
+                        ? "border-amber-500 bg-amber-50"
+                        : "border-slate-200 bg-white hover:border-slate-300",
+                      !isAvailable && "opacity-50",
+                    )}
+                  >
+                    <button
+                      onClick={() => handleApplyPreset(preset)}
+                      disabled={!isAvailable || isSaving}
+                      title={
+                        isAvailable
+                          ? `Apply preset: ${preset.name}`
+                          : "Preset references a scenario or persona that's no longer available"
+                      }
+                      className="pl-3 pr-2 py-1.5 text-xs font-medium text-slate-700 disabled:cursor-not-allowed"
+                    >
+                      {preset.name}
+                    </button>
+                    <button
+                      onClick={() => handleDeletePreset(preset.id)}
+                      title={`Delete preset: ${preset.name}`}
+                      aria-label={`Delete preset ${preset.name}`}
+                      className="pr-2.5 pl-1 py-1.5 text-slate-400 hover:text-red-500"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
+          {showSaveForm && (
+            <div className="flex items-center gap-2 p-3 bg-slate-50 rounded-xl border border-slate-200">
+              <input
+                type="text"
+                autoFocus
+                value={newPresetName}
+                onChange={(e) => setNewPresetName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleSaveCurrentAsPreset();
+                  if (e.key === "Escape") {
+                    setShowSaveForm(false);
+                    setNewPresetName("");
+                  }
+                }}
+                placeholder='e.g. "PIP rehearsal"'
+                maxLength={40}
+                className="flex-1 px-3 py-1.5 text-sm rounded-lg border border-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-400"
+              />
+              <Button
+                onClick={handleSaveCurrentAsPreset}
+                disabled={!newPresetName.trim() || !canSavePreset}
+                className="bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs h-8 px-3"
+              >
+                Save
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  setShowSaveForm(false);
+                  setNewPresetName("");
+                }}
+                className="text-xs h-8 px-2 text-slate-500"
+              >
+                Cancel
+              </Button>
+            </div>
+          )}
+
+          {presets.length >= MAX_PRESETS && !showSaveForm && (
+            <p className="text-xs text-slate-400 mt-1">
+              You've reached {MAX_PRESETS} presets. Delete one to save another.
+            </p>
+          )}
+        </section>
 
         {/* Scenario selection */}
         <section className="mb-8">
