@@ -11,3 +11,9 @@ id = "KEVGT_uUX9U0F690xqU-s"
 uri = "file://attached_assets/generated_images/buildathon_project_image_480x128.png"
 type = "image"
 title = "Buildathon Project Image (480x128)"
+
+[[outputs]]
+id = "u0SbBlxMiT9j9rqxeAs8P"
+uri = "file://attached_assets/generated_images/exit_coach_banner_480x128.png"
+type = "image"
+title = "Exit Coach Banner (480x128)"
