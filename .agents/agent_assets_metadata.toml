@@ -1,0 +1,13 @@
+uploads = []
+
+[[generated]]
+id = "HlQGulwo1iuVmORKqiCd7"
+uri = "file://attached_assets/generated_images/buildathon_banner_raw.png"
+type = "image"
+title = "generated_image"
+
+[[outputs]]
+id = "KEVGT_uUX9U0F690xqU-s"
+uri = "file://attached_assets/generated_images/buildathon_project_image_480x128.png"
+type = "image"
+title = "Buildathon Project Image (480x128)"
