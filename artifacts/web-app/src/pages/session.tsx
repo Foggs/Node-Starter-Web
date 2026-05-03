@@ -292,6 +292,7 @@ function CoachingTipOverlay({
   );
   const pausedRef = useRef(false);
   const continuedRef = useRef(false);
+  const continueButtonRef = useRef<HTMLButtonElement>(null);
 
   // Reset when turn changes (use the live shown turn — `turnNum` may briefly
   // go null while the close animation plays).
@@ -395,6 +396,15 @@ function CoachingTipOverlay({
           // don't lose the coaching tip by tapping anywhere on the page.
           onPointerDownOutside={(e) => e.preventDefault()}
           onInteractOutside={(e) => e.preventDefault()}
+          // Explicitly land focus on the primary "Continue" button when the
+          // overlay opens so keyboard and screen-reader users immediately
+          // know it's active. Radix's FocusScope handles the focus trap
+          // (Tab/Shift+Tab cycling) and restores focus to the previously
+          // focused element on close.
+          onOpenAutoFocus={(e) => {
+            e.preventDefault();
+            continueButtonRef.current?.focus();
+          }}
           className={cn(
             "fixed left-[50%] top-auto bottom-4 sm:top-[50%] sm:bottom-auto z-50 translate-x-[-50%] sm:translate-y-[-50%] w-[calc(100%-2rem)] max-w-lg outline-none",
             "data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:slide-in-from-bottom-4 data-[state=open]:duration-200",
@@ -430,6 +440,7 @@ function CoachingTipOverlay({
 
               <div className="flex items-center gap-2">
                 <Button
+                  ref={continueButtonRef}
                   className="flex-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold gap-2"
                   onClick={handleContinueNow}
                   aria-label={`${continueLabel}${ariaCountdown}`}
