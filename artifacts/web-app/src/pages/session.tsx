@@ -639,7 +639,17 @@ export default function Session() {
   // ── voice playback ──
   const player = useAudioPlayer();
   const [voiceFetching, setVoiceFetching] = useState(false);
+  // True when synthesis or playback never delivered audio (network failure,
+  // 502 from ElevenLabs, decode error, autoplay block, or load-watchdog
+  // timeout). When set, auto-start is intentionally skipped and the UI
+  // surfaces a clear "Voice unavailable" hint so the user knows why.
+  const [voiceFailed, setVoiceFailed] = useState(false);
   const voiceSkippedRef = useRef(false);
+
+  // How long we'll wait for the audio element to reach "playing" once it
+  // enters the "loading" state. Covers stalled network fetches and slow
+  // codec init. Picked to match the slow-request hint threshold (~7s).
+  const VOICE_PLAYBACK_TIMEOUT_MS = 7000;
 
   // ── api mutations ──
   // AbortControllers per long-running mutation so the user can cancel a
@@ -772,6 +782,7 @@ export default function Session() {
 
     voiceSkippedRef.current = false;
     setVoiceFetching(true);
+    setVoiceFailed(false);
 
     synthesizeEmployeeVoiceMutation.mutate(undefined, {
       onSuccess: (data) => {
@@ -789,10 +800,48 @@ export default function Session() {
           console.warn("[employee-voice] unexpected synthesis error:", error);
         }
         setVoiceFetching(false);
+        // Mark as failed so auto-start is skipped and the UI surfaces a
+        // clear "Voice unavailable" hint instead of looking like nothing
+        // happened. The manual fallback button remains usable.
+        setVoiceFailed(true);
       },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase.tag === "employee" ? phase.turnNum : null]);
+
+  // ── playback watchdog ──
+  // Once `player.play()` has been called and the audio element enters the
+  // "loading" state, give it a bounded amount of time to actually start
+  // playing. If `loadeddata`/`playing` never fire (stalled network, codec
+  // init failure), declare voice failed and stop the player so auto-start
+  // can be skipped intentionally.
+  //
+  // We also treat `playbackState === "error"` as failure — this catches
+  // both decode errors (HTMLMediaElement `error` event) and browser
+  // autoplay blocks (the rejected `audio.play()` promise inside
+  // useAudioPlayer transitions to "error").
+  useEffect(() => {
+    if (phase.tag !== "employee") return;
+    if (voiceFailed) return;
+    if (voiceSkippedRef.current) return;
+
+    if (player.playbackState === "error") {
+      setVoiceFailed(true);
+      return;
+    }
+
+    if (player.playbackState !== "loading") return;
+
+    const id = window.setTimeout(() => {
+      setVoiceFailed(true);
+      player.stop();
+    }, VOICE_PLAYBACK_TIMEOUT_MS);
+    return () => clearTimeout(id);
+    // Narrow deps to playbackState + stop so the timer isn't reset by
+    // unrelated re-renders (the player object identity changes each
+    // render, but `stop` is stable thanks to useCallback).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, player.playbackState, player.stop, voiceFailed]);
 
   // ── complete → navigate to feedback ──
   useEffect(() => {
@@ -883,13 +932,18 @@ export default function Session() {
     if (voiceFetching) return;
     if (player.playbackState === "loading" || player.playbackState === "playing")
       return;
+    // If the AI voice failed (synthesis error, decode failure, autoplay
+    // block, or load-watchdog timeout), intentionally skip auto-start so
+    // the user can read the inline "Voice unavailable" hint and tap the
+    // manual fallback button when they're ready.
+    if (voiceFailed) return;
     if (autoRecordTriggeredRef.current === phase.turnNum) return;
     autoRecordTriggeredRef.current = phase.turnNum;
     const id = setTimeout(() => {
       startRecording();
     }, 350);
     return () => clearTimeout(id);
-  }, [phase, voiceFetching, player.playbackState, startRecording]);
+  }, [phase, voiceFetching, voiceFailed, player.playbackState, startRecording]);
 
   function submitRecording() {
     if (phase.tag !== "reviewing") return;
@@ -1241,8 +1295,24 @@ export default function Session() {
 
               {phase.tag === "employee" && !voiceActive && (
                 <div className="flex flex-col items-center gap-2">
+                  {voiceFailed && (
+                    <div
+                      role="status"
+                      aria-live="polite"
+                      className="w-full flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800"
+                    >
+                      <AlertTriangle
+                        className="w-3.5 h-3.5 mt-0.5 shrink-0 text-amber-600"
+                        aria-hidden="true"
+                      />
+                      <span>
+                        Voice unavailable — start recording when ready.
+                      </span>
+                    </div>
+                  )}
                   {/* Auto-start will fire shortly; show a manual fallback in
-                      case mic permission was revoked since onboarding. */}
+                      case mic permission was revoked since onboarding, or in
+                      case the AI voice failed and auto-start was skipped. */}
                   <Button
                     size="lg"
                     variant="outline"
@@ -1251,9 +1321,11 @@ export default function Session() {
                   >
                     <Mic className="w-4 h-4" /> Start Recording
                   </Button>
-                  <p className="text-xs text-slate-400">
-                    Recording will start automatically — or press to start now
-                  </p>
+                  {!voiceFailed && (
+                    <p className="text-xs text-slate-400">
+                      Recording will start automatically — or press to start now
+                    </p>
+                  )}
                 </div>
               )}
 
