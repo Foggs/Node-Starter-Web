@@ -207,10 +207,10 @@ function SessionRecoveryBanner({
 
 // ─── TurnBubble ───────────────────────────────────────────────────────────────
 
-function TurnBubble({ turn }: { turn: CompletedTurn }) {
+function TurnBubble({ turn, isNew }: { turn: CompletedTurn; isNew: boolean }) {
   const isManager = turn.role === "manager";
   return (
-    <div className={`flex gap-3 ${isManager ? "flex-row-reverse" : ""}`}>
+    <div className={`flex gap-3 ${isManager ? "flex-row-reverse" : ""} ${isNew ? "turn-enter" : ""}`}>
       <div
         className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-xs font-bold ${
           isManager
@@ -615,6 +615,11 @@ export default function Session() {
   const recorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<BlobPart[]>([]);
 
+  // Tracks how many turns existed at initial mount (and after a checkpoint
+  // resume). Anything at an index >= this baseline is treated as "new" and
+  // gets the slide-in animation; older bubbles render without it.
+  const initialTurnCountRef = useRef<number>(completedTurns.length);
+
   // ── voice playback ──
   const player = useAudioPlayer();
   const [voiceFetching, setVoiceFetching] = useState(false);
@@ -748,6 +753,8 @@ export default function Session() {
   function handleResume() {
     if (!pendingCheckpoint) return;
     const saved = pendingCheckpoint.completedTurns;
+    // Treat all restored turns as pre-existing so they don't animate in.
+    initialTurnCountRef.current = saved.length;
     setCompletedTurns(saved);
     setPendingCheckpoint(null);
     const completedManagerCount = saved.filter(
@@ -1044,7 +1051,7 @@ export default function Session() {
         {/* Conversation history */}
         <div className="space-y-4 mb-4 min-h-40">
           {completedTurns.map((turn, i) => (
-            <TurnBubble key={i} turn={turn} />
+            <TurnBubble key={i} turn={turn} isNew={i >= initialTurnCountRef.current} />
           ))}
 
           {/* Current phase indicators */}

@@ -304,6 +304,19 @@
     animation: page-fade-in 180ms ease-out both;
   }
 
+  /* ── Turn bubble enter transition ────────────────────────────────────────
+     Applied only to newly-added conversation turns so each bubble fades +
+     slides in instead of popping. Pre-existing turns (e.g. those restored
+     from a checkpoint on initial mount) skip this class so they don't all
+     animate at once. */
+  @keyframes turn-fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .turn-enter {
+    animation: turn-fade-in 180ms ease-out both;
+  }
+
   /* ── Reduced-motion guard ────────────────────────────────────────────────
      Disable every motion effect introduced by Task #31 when the user has
      `prefers-reduced-motion: reduce`. State changes still happen instantly
@@ -311,7 +324,8 @@
   @media (prefers-reduced-motion: reduce) {
     .animate-mic-pulse,
     .animate-mic-pulse-fallback,
-    .page-enter {
+    .page-enter,
+    .turn-enter {
       animation: none !important;
       transform: none !important;
       transition: none !important;
