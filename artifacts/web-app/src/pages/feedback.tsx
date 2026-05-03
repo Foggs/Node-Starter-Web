@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "wouter";
-import { ApiError } from "@workspace/api-client-react";
+import { ApiError, generateFeedbackSummary } from "@workspace/api-client-react";
+import { isAbortError } from "@/lib/apiErrors";
+import { useSlowRequestHint } from "@/hooks/useSlowRequestHint";
+import { SlowRequestHint } from "@/components/SlowRequestHint";
 import {
   LineChart,
   Line,
@@ -480,9 +483,22 @@ function FeedbackPanel({
 export default function Feedback() {
   const [, navigate] = useLocation();
 
-  const feedbackMutation = useGenerateFeedbackSummary();
+  // AbortController so the user can cancel a slow feedback-summary request
+  // via the SlowRequestHint banner. Each call recreates the controller.
+  const feedbackAbortRef = useRef<AbortController | null>(null);
+  const feedbackMutation = useGenerateFeedbackSummary({
+    mutation: {
+      mutationFn: () => {
+        feedbackAbortRef.current?.abort();
+        const ctrl = new AbortController();
+        feedbackAbortRef.current = ctrl;
+        return generateFeedbackSummary({ signal: ctrl.signal });
+      },
+    },
+  });
   const sessionQuery = useGetSession();
   const exportMutation = useExportReport();
+  const feedbackSlow = useSlowRequestHint(feedbackMutation.isPending);
 
   const turns: Turn[] = sessionQuery.data?.turns ?? [];
 
@@ -501,6 +517,10 @@ export default function Feedback() {
   function handleRetry() {
     feedbackMutation.reset();
     feedbackMutation.mutate();
+  }
+
+  function cancelFeedback() {
+    feedbackAbortRef.current?.abort();
   }
 
   const exportInFlightRef = useRef(false);
@@ -634,10 +654,15 @@ export default function Feedback() {
 
         {/* Error */}
         {isError && (() => {
-          const info = categorizeApiError(
-            feedbackMutation.error,
-            "Generating feedback",
-          );
+          const info = isAbortError(feedbackMutation.error)
+            ? {
+                title: "Cancelled",
+                body: "We stopped building your report. Tap Retry whenever you're ready.",
+              }
+            : categorizeApiError(
+                feedbackMutation.error,
+                "Generating feedback",
+              );
           return (
           <Card className="border-red-200 bg-red-50 mb-6" role="alert">
             <CardContent className="pt-4 pb-4 flex items-start gap-3">
@@ -673,8 +698,18 @@ export default function Feedback() {
           );
         })()}
 
-        {/* Skeleton */}
-        {isLoading && <FeedbackSkeleton />}
+        {/* Skeleton + slow-request hint */}
+        {isLoading && (
+          <div className="space-y-4">
+            {feedbackSlow && (
+              <SlowRequestHint
+                message="Still building your coaching report — you can cancel and try again."
+                onCancel={cancelFeedback}
+              />
+            )}
+            <FeedbackSkeleton />
+          </div>
+        )}
 
         {/* Loaded */}
         {!isLoading && feedback && (

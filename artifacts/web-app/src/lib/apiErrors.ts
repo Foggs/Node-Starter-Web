@@ -6,6 +6,22 @@ export interface ApiErrorInfo {
 }
 
 /**
+ * Returns true if the error originated from an AbortController being aborted
+ * (e.g. user cancelled a slow request via the SlowRequestHint cancel button).
+ */
+export function isAbortError(err: unknown): boolean {
+  if (
+    typeof DOMException !== "undefined" &&
+    err instanceof DOMException &&
+    err.name === "AbortError"
+  ) {
+    return true;
+  }
+  if (err instanceof Error && err.name === "AbortError") return true;
+  return false;
+}
+
+/**
  * Categorises errors thrown by API client mutations/queries into a short
  * title + actionable body. Recognises ApiError (HTTP status), AbortError
  * (timeout), and TypeError (offline / network).

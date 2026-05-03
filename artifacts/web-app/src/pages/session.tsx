@@ -31,6 +31,8 @@ import {
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import {
   ApiError,
+  generateEmployeeTurn,
+  getCoachingTip,
   getGetSessionQueryKey,
   useGenerateEmployeeTurn,
   useGetCoachingTip,
@@ -38,7 +40,10 @@ import {
   useSynthesizeEmployeeVoice,
 } from "@workspace/api-client-react";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
+import { useSlowRequestHint } from "@/hooks/useSlowRequestHint";
+import { SlowRequestHint } from "@/components/SlowRequestHint";
 import { categorizeMicError } from "@/lib/micErrors";
+import { isAbortError } from "@/lib/apiErrors";
 import { cn } from "@/lib/utils";
 import {
   useListScenarios,
@@ -637,9 +642,41 @@ export default function Session() {
   const voiceSkippedRef = useRef(false);
 
   // ── api mutations ──
-  const employeeTurnMutation = useGenerateEmployeeTurn();
-  const coachingTipMutation = useGetCoachingTip();
+  // AbortControllers per long-running mutation so the user can cancel a
+  // slow-but-pending request via the SlowRequestHint banner. Each call
+  // creates a fresh controller; the previous one is aborted defensively.
+  const employeeAbortRef = useRef<AbortController | null>(null);
+  const coachingAbortRef = useRef<AbortController | null>(null);
+
+  const employeeTurnMutation = useGenerateEmployeeTurn({
+    mutation: {
+      mutationFn: () => {
+        employeeAbortRef.current?.abort();
+        const ctrl = new AbortController();
+        employeeAbortRef.current = ctrl;
+        return generateEmployeeTurn({ signal: ctrl.signal });
+      },
+    },
+  });
+  const coachingTipMutation = useGetCoachingTip({
+    mutation: {
+      mutationFn: ({ data }) => {
+        coachingAbortRef.current?.abort();
+        const ctrl = new AbortController();
+        coachingAbortRef.current = ctrl;
+        return getCoachingTip(data, { signal: ctrl.signal });
+      },
+    },
+  });
   const synthesizeEmployeeVoiceMutation = useSynthesizeEmployeeVoice();
+
+  // ── slow-request hints (~6s threshold) ──
+  const employeeFetchSlow = useSlowRequestHint(
+    phase.tag === "fetching_employee" && employeeTurnMutation.isPending,
+  );
+  const coachingTipSlow = useSlowRequestHint(
+    phase.tag === "processing" && coachingTipMutation.isPending,
+  );
 
   // ── auto-scroll ──
   useEffect(() => {
@@ -713,8 +750,14 @@ export default function Session() {
       onSuccess: (data) => {
         setPhase({ tag: "employee", turnNum, text: data.transcript });
       },
-      onError: () => {
-        setFetchError("The AI service is temporarily unavailable — please try again.");
+      onError: (err) => {
+        if (isAbortError(err)) {
+          setFetchError("Cancelled — tap Retry when you're ready.");
+        } else {
+          setFetchError(
+            "The AI service is temporarily unavailable — please try again.",
+          );
+        }
         // Stay in fetching_employee so the user can retry
       },
     });
@@ -788,6 +831,14 @@ export default function Session() {
   function handleRetryFetch() {
     if (phase.tag !== "fetching_employee") return;
     setRetryKey((k) => k + 1);
+  }
+
+  function cancelEmployeeFetch() {
+    employeeAbortRef.current?.abort();
+  }
+
+  function cancelCoachingTip() {
+    coachingAbortRef.current?.abort();
   }
 
   const startRecording = useCallback(async () => {
@@ -874,12 +925,18 @@ export default function Session() {
             },
           });
         },
-        onError: () => {
+        onError: (err) => {
           // Return to reviewing so the user can retry submission or re-record
           setPhase({ tag: "reviewing", turnNum, text, blob });
-          setFetchError(
-            "We couldn't analyse that response. Try submitting again or re-record.",
-          );
+          if (isAbortError(err)) {
+            setFetchError(
+              "Cancelled — submit again when you're ready, or re-record.",
+            );
+          } else {
+            setFetchError(
+              "We couldn't analyse that response. Try submitting again or re-record.",
+            );
+          }
         },
       },
     );
@@ -1141,9 +1198,17 @@ export default function Session() {
           <Card className="border-slate-200 sticky bottom-4">
             <CardContent className="pt-4 pb-4">
               {phase.tag === "fetching_employee" && (
-                <div className="flex items-center justify-center gap-2 text-sm text-slate-400 py-1">
-                  <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
-                  Preparing employee response…
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-center gap-2 text-sm text-slate-400 py-1">
+                    <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
+                    Preparing employee response…
+                  </div>
+                  {employeeFetchSlow && (
+                    <SlowRequestHint
+                      message="Still working on the employee's response — you can cancel and retry."
+                      onCancel={cancelEmployeeFetch}
+                    />
+                  )}
                 </div>
               )}
 
@@ -1217,9 +1282,17 @@ export default function Session() {
               )}
 
               {phase.tag === "processing" && (
-                <div className="flex items-center justify-center gap-2 text-sm text-slate-400 py-1">
-                  <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
-                  Getting your coaching tip…
+                <div className="flex flex-col gap-2">
+                  <div className="flex items-center justify-center gap-2 text-sm text-slate-400 py-1">
+                    <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
+                    Getting your coaching tip…
+                  </div>
+                  {coachingTipSlow && (
+                    <SlowRequestHint
+                      message="Still analysing your response — you can cancel and re-record or try again."
+                      onCancel={cancelCoachingTip}
+                    />
+                  )}
                 </div>
               )}
 
