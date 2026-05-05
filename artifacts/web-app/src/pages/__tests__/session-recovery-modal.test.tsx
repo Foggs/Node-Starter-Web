@@ -252,7 +252,7 @@ describe("Session — recovery modal (R2)", () => {
     expect(synthesizeEmployeeVoice).not.toHaveBeenCalled();
   });
 
-  it("Discard clears the checkpoint and dismisses the modal", async () => {
+  it("Discard clears the checkpoint, dismisses the modal, and returns focus to the practice surface", async () => {
     seedCheckpoint();
     renderSession();
     await act(async () => {
@@ -265,9 +265,18 @@ describe("Session — recovery modal (R2)", () => {
     await act(async () => {
       discard.click();
     });
+    await act(async () => {
+      await Promise.resolve();
+    });
 
     expect(sessionStorage.getItem(CHECKPOINT_KEY)).toBeNull();
     expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+
+    // After Discard, focus must leave the now-unmounted modal. Radix
+    // restores focus to the previously-focused element (or document
+    // body when there was none) — either way it must not still be
+    // pinned inside the dismissed dialog.
+    expect(document.activeElement?.closest("[role='alertdialog']")).toBeNull();
   });
 
   it("Resume keeps the modal open with an inline error + Retry when the readiness refetch fails with a network error", async () => {

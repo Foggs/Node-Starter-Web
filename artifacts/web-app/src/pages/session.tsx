@@ -188,9 +188,14 @@ function RecoveryModal({
   return (
     <AlertDialog open>
       <AlertDialogContent
-        // Lock the modal: Esc must not dismiss it. Radix AlertDialog
-        // already disables outside-pointer dismissal by default, so the
-        // only way out is Resume / Discard.
+        // Lock the modal: Esc must not dismiss it. Outside-pointer
+        // dismissal is *intentionally* not wired up here because Radix's
+        // `AlertDialogPrimitive.Content` hard-codes outside-click
+        // suppression for the alert variant (it deliberately does not
+        // expose `onPointerDownOutside` like the standard Dialog does).
+        // If the underlying primitive ever changes, replace this with
+        // an explicit `onPointerDownOutside={(e) => e.preventDefault()}`
+        // to keep the contract. (R2)
         onEscapeKeyDown={(e: KeyboardEvent) => e.preventDefault()}
         className="border-amber-300"
       >
