@@ -683,8 +683,16 @@ export default function Session() {
   });
 
   // ── checkpoint recovery ──
+  // Detect the checkpoint synchronously on first render so the
+  // `fetching_employee` effect below can short-circuit before it fires
+  // any background mutation. Without this, the default phase would
+  // trigger an employee-turn fetch on the very first commit, racing
+  // the post-render mount effect that sets `pendingCheckpoint`. (R2)
   const [pendingCheckpoint, setPendingCheckpoint] = useState<Checkpoint | null>(
-    null,
+    () => {
+      const cp = loadCheckpoint();
+      return cp && cp.completedTurns.length > 0 ? cp : null;
+    },
   );
 
   const [completedTurns, setCompletedTurns] = useState<CompletedTurn[]>([]);
@@ -828,20 +836,23 @@ export default function Session() {
   ]);
 
   // ── checkpoint on mount (deferred until readiness is confirmed) ──
+  // The checkpoint itself was detected synchronously above; this effect
+  // only handles the fresh-start path (kick off turn 1 once readiness
+  // resolves). When a checkpoint is pending, we leave `phase` alone —
+  // the gated fetch effect below will not run until the user picks
+  // Resume or Discard.
   useEffect(() => {
     if (sessionReady !== "ready") return;
-    const checkpoint = loadCheckpoint();
-    if (checkpoint && checkpoint.completedTurns.length > 0) {
-      setPendingCheckpoint(checkpoint);
-    } else {
-      // fresh start — fetch first employee turn
-      setPhase({ tag: "fetching_employee", turnNum: 1 });
-    }
-  }, [sessionReady]);
+    if (pendingCheckpoint) return;
+    setPhase({ tag: "fetching_employee", turnNum: 1 });
+  }, [sessionReady, pendingCheckpoint]);
 
   // ── fetch employee turn whenever phase enters fetching_employee ──
   useEffect(() => {
     if (sessionReady !== "ready") return;
+    // Hard gate: never fetch (and never advance phase) while the
+    // recovery modal is awaiting the user's decision. (R2)
+    if (pendingCheckpoint) return;
     if (phase.tag !== "fetching_employee") return;
     const { turnNum } = phase;
     setFetchError(null);
@@ -862,7 +873,12 @@ export default function Session() {
       },
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phase.tag === "fetching_employee" ? phase.turnNum : null, retryKey, sessionReady]);
+  }, [
+    phase.tag === "fetching_employee" ? phase.turnNum : null,
+    retryKey,
+    sessionReady,
+    pendingCheckpoint,
+  ]);
 
   const autoRecordTriggeredRef = useRef<number | null>(null);
 

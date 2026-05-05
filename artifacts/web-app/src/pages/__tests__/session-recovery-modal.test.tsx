@@ -220,6 +220,22 @@ describe("Session — recovery modal (R2)", () => {
     expect(screen.getByRole("alertdialog")).toBeInTheDocument();
   });
 
+  it("does not fire any background employee-turn fetch while the modal is open", async () => {
+    seedCheckpoint();
+    renderSession();
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+    // Critical: the practice engine must not advance behind the modal.
+    expect(generateEmployeeTurn).not.toHaveBeenCalled();
+    expect(synthesizeEmployeeVoice).not.toHaveBeenCalled();
+  });
+
   it("Discard clears the checkpoint and dismisses the modal", async () => {
     seedCheckpoint();
     renderSession();
