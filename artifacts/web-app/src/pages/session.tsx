@@ -1327,18 +1327,34 @@ export default function Session() {
         ?.name
     : undefined;
 
+  // Defensive: while the user has not yet chosen Resume or Discard,
+  // do not render the practice surface at all. Radix's AlertDialog
+  // already provides a focus trap and (in the AlertDialog variant)
+  // hard-coded backdrop-dismiss prevention — note that Radix
+  // intentionally omits an `onPointerDownOutside` prop on
+  // `AlertDialogPrimitive.Content` because outside-clicks must never
+  // close an alert dialog. Returning only the modal here removes any
+  // risk of background interaction or focus leakage. (R2)
+  if (pendingCheckpoint) {
+    return (
+      <AppShell>
+        <RecoveryModal
+          checkpoint={pendingCheckpoint}
+          scenarioName={scenarioNameForBanner}
+          personaName={personaNameForBanner}
+          onResume={handleResume}
+          onDiscard={handleDiscard}
+          reconciling={resumeReconciling}
+          reconcileError={resumeError}
+          onRetry={handleResumeRetry}
+        />
+      </AppShell>
+    );
+  }
+
   return (
     <AppShell>
-      <div
-        // While a checkpoint decision is pending, make the practice
-        // container unreachable to mouse and screen readers as a
-        // defensive layer behind Radix's focus trap. (R2)
-        className={cn(
-          "max-w-2xl mx-auto",
-          pendingCheckpoint && "pointer-events-none select-none",
-        )}
-        aria-hidden={pendingCheckpoint ? true : undefined}
-      >
+      <div className="max-w-2xl mx-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -1617,23 +1633,6 @@ export default function Session() {
         turnNum={phase.tag === "coaching_tip" ? phase.turnNum : null}
         onContinue={handleContinueAfterTip}
       />
-
-      {/* Recovery modal — blocking. Renders only when a checkpoint is
-          pending; Radix AlertDialog provides focus trap, scroll lock,
-          and aria-modal semantics so the practice container behind it
-          is unreachable. (R2) */}
-      {pendingCheckpoint && (
-        <RecoveryModal
-          checkpoint={pendingCheckpoint}
-          scenarioName={scenarioNameForBanner}
-          personaName={personaNameForBanner}
-          onResume={handleResume}
-          onDiscard={handleDiscard}
-          reconciling={resumeReconciling}
-          reconcileError={resumeError}
-          onRetry={handleResumeRetry}
-        />
-      )}
 
       {/* End confirmation */}
       <AlertDialog open={endConfirmOpen} onOpenChange={setEndConfirmOpen}>
