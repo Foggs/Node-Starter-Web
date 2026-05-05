@@ -218,6 +218,22 @@ describe("Session — recovery modal (R2)", () => {
       );
     });
     expect(screen.getByRole("alertdialog")).toBeInTheDocument();
+
+    // Backdrop click must not dismiss the modal either. Radix
+    // AlertDialog hard-codes this, but lock it down via test.
+    const overlay = document.querySelector(
+      "[data-radix-popper-content-wrapper], [data-state=open]",
+    );
+    if (overlay) {
+      await act(async () => {
+        overlay.dispatchEvent(
+          new MouseEvent("pointerdown", { bubbles: true }),
+        );
+        overlay.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+        overlay.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+    }
+    expect(screen.getByRole("alertdialog")).toBeInTheDocument();
   });
 
   it("does not fire any background employee-turn fetch while the modal is open", async () => {
