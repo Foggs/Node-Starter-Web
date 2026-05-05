@@ -7,12 +7,12 @@
 
 ## 🔴 Red Lights — Implement First
 
-- [ ] **R1 — Employee voice fetch timeout**  
+- [x] **R1 — Employee voice fetch timeout**  
   Add an explicit 8-second `AbortController` timeout on `POST /api/employee-voice` in the session page.  
   On timeout: cancel the request, exit `fetching_employee` state, display the employee turn as text only, and enable the recording UI.  
   *Acceptance:* throttle network to Slow 3G in DevTools — user can still record their response within 10 seconds of turn start.
 
-- [ ] **R2 — SessionRecoveryBanner must be a blocking modal**  
+- [x] **R2 — SessionRecoveryBanner must be a blocking modal**  
   Replace the dismissible notification with a modal that requires an explicit Resume or Discard choice before any session interaction is possible.  
   On Resume: restore checkpoint state and reconcile with server session.  
   On Discard: clear `sessionStorage` checkpoint and start fresh.  

@@ -144,23 +144,39 @@ function EmotionBadge({ score }: { score: number }) {
   );
 }
 
-// ─── SessionRecoveryBanner ────────────────────────────────────────────────────
+// ─── RecoveryModal ────────────────────────────────────────────────────────────
+//
+// Blocking modal shown when a sessionStorage checkpoint is detected on
+// /session. Uses Radix AlertDialog so the modal is non-dismissible by
+// Escape or backdrop click — only the Resume / Discard actions can close
+// it. Radix also provides the focus trap, scroll lock, and aria-modal
+// semantics needed to keep the practice UI behind it unreachable. (R2)
 
-interface RecoveryBannerProps {
+interface RecoveryModalProps {
   checkpoint: Checkpoint;
   scenarioName?: string;
   personaName?: string;
   onResume: () => void;
   onDiscard: () => void;
+  /** True while the Resume reconcile call (server-readiness refetch) is
+   *  in flight. Disables both actions and shows a spinner on Resume. */
+  reconciling: boolean;
+  /** Network-level error from the readiness refetch. When set, surfaces
+   *  an inline error inside the modal with a single Retry button. */
+  reconcileError: string | null;
+  onRetry: () => void;
 }
 
-function SessionRecoveryBanner({
+function RecoveryModal({
   checkpoint,
   scenarioName,
   personaName,
   onResume,
   onDiscard,
-}: RecoveryBannerProps) {
+  reconciling,
+  reconcileError,
+  onRetry,
+}: RecoveryModalProps) {
   const completedManagerTurns = checkpoint.completedTurns.filter(
     (t) => t.role === "manager",
   ).length;
@@ -170,44 +186,92 @@ function SessionRecoveryBanner({
   const contextLine = [scenarioName, personaName].filter(Boolean).join(" · ");
 
   return (
-    <Card className="border-amber-300 bg-amber-50 mb-4">
-      <CardContent className="pt-4 pb-4">
-        <div className="flex items-start gap-3">
-          <AlertTriangle className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-amber-900">
+    <AlertDialog open>
+      <AlertDialogContent
+        // Lock the modal: Esc must not dismiss it. Radix AlertDialog
+        // already disables outside-pointer dismissal by default, so the
+        // only way out is Resume / Discard.
+        onEscapeKeyDown={(e: KeyboardEvent) => e.preventDefault()}
+        className="border-amber-300"
+      >
+        <AlertDialogHeader>
+          <AlertDialogTitle className="flex items-start gap-2 text-amber-900">
+            <AlertTriangle
+              className="w-5 h-5 text-amber-600 mt-0.5 shrink-0"
+              aria-hidden="true"
+            />
+            <span>
               Resume turn {nextTurn} of 5
               {contextLine && (
-                <span className="font-normal text-amber-800"> — {contextLine}</span>
+                <span className="font-normal text-amber-800">
+                  {" "}
+                  — {contextLine}
+                </span>
               )}
-            </p>
-            <p className="text-xs text-amber-700 mt-0.5">
-              {completedManagerTurns} of 5 manager turn
-              {completedManagerTurns !== 1 ? "s" : ""} completed — saved{" "}
-              {agoLabel}
-            </p>
+            </span>
+          </AlertDialogTitle>
+          <AlertDialogDescription className="text-amber-800">
+            We found an unfinished session: {completedManagerTurns} of 5
+            manager turn{completedManagerTurns !== 1 ? "s" : ""} completed —
+            saved {agoLabel}. Resume where you left off, or discard the saved
+            progress and start fresh from turn 1.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+
+        {reconcileError && (
+          <div
+            role="alert"
+            className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+          >
+            <AlertTriangle
+              className="w-4 h-4 mt-0.5 shrink-0 text-red-600"
+              aria-hidden="true"
+            />
+            <div className="flex-1">
+              <p>{reconcileError}</p>
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-2 h-7 border-red-300 text-red-700 hover:bg-red-100"
+                onClick={onRetry}
+                disabled={reconciling}
+              >
+                Retry
+              </Button>
+            </div>
           </div>
-          <div className="flex gap-2 shrink-0">
-            <Button
-              size="sm"
-              variant="outline"
-              className="border-amber-400 text-amber-800 hover:bg-amber-100 gap-1"
-              onClick={onResume}
-            >
-              <RotateCcw className="w-3.5 h-3.5" /> Resume
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              className="text-amber-700 hover:text-amber-900"
-              onClick={onDiscard}
-            >
-              Start fresh
-            </Button>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
+        )}
+
+        <AlertDialogFooter>
+          <AlertDialogCancel
+            onClick={onDiscard}
+            disabled={reconciling}
+            className="border-amber-300 text-amber-800 hover:bg-amber-50"
+          >
+            Discard and start fresh
+          </AlertDialogCancel>
+          <AlertDialogAction
+            onClick={(e) => {
+              // Prevent Radix's default "close on action" — we control
+              // closing ourselves via setPendingCheckpoint(null) only
+              // after the readiness reconcile succeeds.
+              e.preventDefault();
+              onResume();
+            }}
+            disabled={reconciling}
+            autoFocus
+            className="bg-amber-600 hover:bg-amber-500 text-white gap-1.5"
+          >
+            {reconciling ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+            ) : (
+              <RotateCcw className="w-3.5 h-3.5" aria-hidden="true" />
+            )}
+            {reconciling ? "Checking session…" : "Resume"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
   );
 }
 
@@ -919,9 +983,14 @@ export default function Session() {
 
   // ── handlers ──
 
-  function handleResume() {
-    if (!pendingCheckpoint) return;
-    const saved = pendingCheckpoint.completedTurns;
+  // Reconcile state for the recovery modal's Resume action. We refetch
+  // the readiness gate before applying the saved turns so a stale
+  // checkpoint can't resume into an invalid (expired/unauthorised)
+  // server session. (R2)
+  const [resumeReconciling, setResumeReconciling] = useState(false);
+  const [resumeError, setResumeError] = useState<string | null>(null);
+
+  function applySavedTurns(saved: CompletedTurn[]) {
     // Treat all restored turns as pre-existing so they don't animate in.
     initialTurnCountRef.current = saved.length;
     setCompletedTurns(saved);
@@ -936,11 +1005,99 @@ export default function Session() {
     }
   }
 
-  function handleDiscard() {
+  /** Handle a server-readiness failure surfaced via the Resume reconcile.
+   *  Mirrors the initial-mount gate: discard the (now-invalid) checkpoint,
+   *  surface the brief interstitial, and route the user back to the
+   *  earliest incomplete onboarding step. */
+  function redirectFromResume(err: unknown) {
     clearCheckpoint();
+    setPendingCheckpoint(null);
+    let info: { step: MissingStep; label: string; target: string } = {
+      step: 1,
+      label: "Biometric Consent",
+      target: "/",
+    };
+    if (err instanceof ApiError && err.status === 400) {
+      const body = err.data as { missingStep?: unknown } | null;
+      const step = body?.missingStep;
+      if (isMissingStep(step)) {
+        info = missingStepInfo(step);
+      }
+    }
+    setRedirectReason(info);
+    setSessionReady("redirecting");
+    window.setTimeout(() => navigate(info.target), 1200);
+  }
+
+  async function handleResume() {
+    if (!pendingCheckpoint) return;
+    const saved = pendingCheckpoint.completedTurns;
+    setResumeError(null);
+    setResumeReconciling(true);
+    try {
+      // Force-refetch the readiness query (it was disabled after the
+      // initial mount succeeded). If the server session has since
+      // expired or lost a required step, this surfaces it before we
+      // apply the saved turns.
+      const result = await sessionReadyQuery.refetch();
+      if (result.isError) {
+        const err = result.error;
+        // Only redirect on structured server-side rejections — a 400
+        // with a missing-step body, or a 401 unauthorised. Anything
+        // else (network failure, 5xx, unexpected shape) is treated as
+        // a transient error: keep the modal open with an inline Retry
+        // so the user can choose to try again or Discard. (R2)
+        const isAuthOrMissingStep =
+          err instanceof ApiError && (err.status === 400 || err.status === 401);
+        if (isAuthOrMissingStep) {
+          redirectFromResume(err);
+          return;
+        }
+        setResumeError(
+          err instanceof Error && err.message
+            ? `Couldn't verify your session: ${err.message}. Check your connection and try again.`
+            : "Couldn't verify your session. Check your connection and try again.",
+        );
+        return;
+      }
+      applySavedTurns(saved);
+    } catch (err) {
+      // Defensive: refetch shouldn't throw, but if it does (e.g. an
+      // unexpected runtime error), keep the modal open with an inline
+      // Retry rather than blowing up the page.
+      setResumeError(
+        err instanceof Error && err.message
+          ? `Couldn't verify your session: ${err.message}. Check your connection and try again.`
+          : "Couldn't verify your session. Check your connection and try again.",
+      );
+    } finally {
+      setResumeReconciling(false);
+    }
+  }
+
+  function handleDiscard() {
+    // Defensive reset of every ref that could leak from a half-loaded
+    // checkpoint resume. With these cleared, a subsequent loadCheckpoint()
+    // returns null and the page is observably back to a fresh turn 1.
+    clearCheckpoint();
+    autoRecordTriggeredRef.current = null;
+    voiceSkippedRef.current = false;
+    voiceAbortRef.current?.abort();
+    voiceAbortRef.current = null;
+    clearVoiceTimeout();
+    initialTurnCountRef.current = 0;
+    setVoiceFetching(false);
+    setVoiceFailed(false);
+    setResumeError(null);
+    setResumeReconciling(false);
     setPendingCheckpoint(null);
     setCompletedTurns([]);
     setPhase({ tag: "fetching_employee", turnNum: 1 });
+  }
+
+  function handleResumeRetry() {
+    setResumeError(null);
+    void handleResume();
   }
 
   function handleRetryFetch() {
@@ -1164,7 +1321,16 @@ export default function Session() {
 
   return (
     <AppShell>
-      <div className="max-w-2xl mx-auto">
+      <div
+        // While a checkpoint decision is pending, make the practice
+        // container unreachable to mouse and screen readers as a
+        // defensive layer behind Radix's focus trap. (R2)
+        className={cn(
+          "max-w-2xl mx-auto",
+          pendingCheckpoint && "pointer-events-none select-none",
+        )}
+        aria-hidden={pendingCheckpoint ? true : undefined}
+      >
         {/* Header */}
         <div className="flex items-center justify-between mb-4">
           <div>
@@ -1199,17 +1365,6 @@ export default function Session() {
           value={progressPct}
           className="h-1.5 mb-5 bg-slate-100"
         />
-
-        {/* Recovery banner */}
-        {pendingCheckpoint && (
-          <SessionRecoveryBanner
-            checkpoint={pendingCheckpoint}
-            scenarioName={scenarioNameForBanner}
-            personaName={personaNameForBanner}
-            onResume={handleResume}
-            onDiscard={handleDiscard}
-          />
-        )}
 
         {/* Error message */}
         {fetchError && (
@@ -1454,6 +1609,23 @@ export default function Session() {
         turnNum={phase.tag === "coaching_tip" ? phase.turnNum : null}
         onContinue={handleContinueAfterTip}
       />
+
+      {/* Recovery modal — blocking. Renders only when a checkpoint is
+          pending; Radix AlertDialog provides focus trap, scroll lock,
+          and aria-modal semantics so the practice container behind it
+          is unreachable. (R2) */}
+      {pendingCheckpoint && (
+        <RecoveryModal
+          checkpoint={pendingCheckpoint}
+          scenarioName={scenarioNameForBanner}
+          personaName={personaNameForBanner}
+          onResume={handleResume}
+          onDiscard={handleDiscard}
+          reconciling={resumeReconciling}
+          reconcileError={resumeError}
+          onRetry={handleResumeRetry}
+        />
+      )}
 
       {/* End confirmation */}
       <AlertDialog open={endConfirmOpen} onOpenChange={setEndConfirmOpen}>
