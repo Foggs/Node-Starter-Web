@@ -34,6 +34,7 @@ import {
   generateEmployeeTurn,
   getCoachingTip,
   getGetSessionQueryKey,
+  synthesizeEmployeeVoice,
   useGenerateEmployeeTurn,
   useGetCoachingTip,
   useGetSession,
@@ -651,12 +652,32 @@ export default function Session() {
   // codec init. Picked to match the slow-request hint threshold (~7s).
   const VOICE_PLAYBACK_TIMEOUT_MS = 7000;
 
+  // Hard ceiling on how long we'll wait for POST /api/employee-voice to
+  // resolve. On slow networks ElevenLabs synthesis can hang for tens of
+  // seconds; once we hit this bound we abort the request, treat the voice
+  // as unavailable (text-only turn), and unblock the recording UI so the
+  // user can speak within the UX-checklist's 10 s window. (R1)
+  const VOICE_FETCH_TIMEOUT_MS = 8000;
+
   // ── api mutations ──
   // AbortControllers per long-running mutation so the user can cancel a
   // slow-but-pending request via the SlowRequestHint banner. Each call
   // creates a fresh controller; the previous one is aborted defensively.
   const employeeAbortRef = useRef<AbortController | null>(null);
   const coachingAbortRef = useRef<AbortController | null>(null);
+  // Voice synthesis gets the same controller-in-ref treatment, plus a
+  // hard timeout (R1). Holding both refs at the component level lets the
+  // unmount cleanup and phase-change effect cancel any in-flight request
+  // and tear down the timer without leaking a late setVoiceFailed call.
+  const voiceAbortRef = useRef<AbortController | null>(null);
+  const voiceTimeoutRef = useRef<number | null>(null);
+
+  function clearVoiceTimeout() {
+    if (voiceTimeoutRef.current !== null) {
+      clearTimeout(voiceTimeoutRef.current);
+      voiceTimeoutRef.current = null;
+    }
+  }
 
   const employeeTurnMutation = useGenerateEmployeeTurn({
     mutation: {
@@ -678,7 +699,12 @@ export default function Session() {
       },
     },
   });
-  const synthesizeEmployeeVoiceMutation = useSynthesizeEmployeeVoice();
+  const synthesizeEmployeeVoiceMutation = useSynthesizeEmployeeVoice({
+    mutation: {
+      mutationFn: () =>
+        synthesizeEmployeeVoice({ signal: voiceAbortRef.current?.signal }),
+    },
+  });
 
   // ── slow-request hints (~6s threshold) ──
   const employeeFetchSlow = useSlowRequestHint(
@@ -784,14 +810,43 @@ export default function Session() {
     setVoiceFetching(true);
     setVoiceFailed(false);
 
+    // Set up a fresh AbortController + 8 s timeout for this turn's
+    // synthesis. Aborting the previous controller defensively guards
+    // against an in-flight request from a prior turn still resolving.
+    voiceAbortRef.current?.abort();
+    clearVoiceTimeout();
+    const ctrl = new AbortController();
+    voiceAbortRef.current = ctrl;
+    voiceTimeoutRef.current = window.setTimeout(() => {
+      ctrl.abort();
+    }, VOICE_FETCH_TIMEOUT_MS);
+
     synthesizeEmployeeVoiceMutation.mutate(undefined, {
       onSuccess: (data) => {
+        // Stale resolution from a previous turn / pre-cleanup mount —
+        // ignore so we don't play audio for a turn we've already left.
+        if (voiceAbortRef.current !== ctrl) return;
+        clearVoiceTimeout();
         setVoiceFetching(false);
         if (!voiceSkippedRef.current) {
           player.play(data.audioUrl);
         }
       },
       onError: (error) => {
+        // Same staleness guard — late rejection from a superseded
+        // controller must not flip the live turn into voiceFailed.
+        if (voiceAbortRef.current !== ctrl) return;
+        clearVoiceTimeout();
+        // Aborted requests are a graceful degradation path — either the
+        // 8 s fetch timeout fired (R1) or the user navigated away mid-
+        // fetch. Treat them exactly like a 502: drop into voiceFailed so
+        // the recording UI unblocks and the existing "Voice unavailable"
+        // hint shows. No console.warn — abort is expected.
+        if (isAbortError(error)) {
+          setVoiceFetching(false);
+          setVoiceFailed(true);
+          return;
+        }
         // 502 is the expected degradation path (ElevenLabs unavailable).
         // Any other status is unexpected — log it for observability while
         // still degrading silently so the session is never blocked.
@@ -806,6 +861,17 @@ export default function Session() {
         setVoiceFailed(true);
       },
     });
+
+    // Cancel an in-flight voice fetch when the phase changes or the
+    // component unmounts. The staleness guards above ensure the late
+    // onError from the aborted request does not touch live state.
+    return () => {
+      ctrl.abort();
+      if (voiceAbortRef.current === ctrl) {
+        voiceAbortRef.current = null;
+      }
+      clearVoiceTimeout();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase.tag === "employee" ? phase.turnNum : null]);
 
