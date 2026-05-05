@@ -41,6 +41,11 @@ import {
   useSynthesizeEmployeeVoice,
 } from "@workspace/api-client-react";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
+import {
+  useImprovedReplay,
+  resetImprovedReplay,
+} from "@/hooks/useImprovedReplay";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSlowRequestHint } from "@/hooks/useSlowRequestHint";
 import { SlowRequestHint } from "@/components/SlowRequestHint";
 import { categorizeMicError } from "@/lib/micErrors";
@@ -849,7 +854,16 @@ export default function Session() {
   useEffect(() => {
     if (sessionReady !== "ready") return;
     if (pendingCheckpoint) return;
+    // A fresh-start mount means a new practice session is beginning.
+    // Drop any improved-replay cache left over from a previous run so
+    // the next completion re-fires generation instead of serving the
+    // prior session's turns. (R3)
+    resetImprovedReplay(queryClient);
+    eagerReplayFiredRef.current = false;
     setPhase({ tag: "fetching_employee", turnNum: 1 });
+    // queryClient is referentially stable for the lifetime of the app,
+    // so we deliberately scope this effect to readiness + checkpoint.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionReady, pendingCheckpoint]);
 
   // ── fetch employee turn whenever phase enters fetching_employee ──
@@ -994,13 +1008,29 @@ export default function Session() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [phase, player.playbackState, player.stop, voiceFailed]);
 
-  // ── complete → navigate to feedback ──
+  // ── complete → kick off improved-replay eagerly + navigate to feedback ──
+  // Firing `ensureStarted()` here means LLM rewrite + per-turn TTS begins
+  // the moment turn 5 is confirmed, so the audio is usually ready by the
+  // time the user reaches /replay. The shared cache (see
+  // `useImprovedReplay`) dedupes against any subsequent observer mounts.
+  // The call is fire-and-forget — navigation does not wait. (R3)
+  const queryClient = useQueryClient();
+  const improvedReplay = useImprovedReplay();
+  const eagerReplayFiredRef = useRef(false);
   useEffect(() => {
     if (phase.tag === "complete") {
+      if (!eagerReplayFiredRef.current) {
+        eagerReplayFiredRef.current = true;
+        // Swallow the rejection here — the /feedback and /replay pages
+        // observe error state via the shared hook and surface a Retry
+        // affordance. An unhandled rejection in this fire-and-forget
+        // call would otherwise show up as a noisy console error.
+        improvedReplay.ensureStarted().catch(() => {});
+      }
       clearCheckpoint();
       navigate("/feedback");
     }
-  }, [phase.tag, navigate]);
+  }, [phase.tag, navigate, improvedReplay]);
 
   // ── handlers ──
 
@@ -1032,6 +1062,7 @@ export default function Session() {
    *  earliest incomplete onboarding step. */
   function redirectFromResume(err: unknown) {
     clearCheckpoint();
+    resetImprovedReplay(queryClient);
     setPendingCheckpoint(null);
     let info: { step: MissingStep; label: string; target: string } = {
       step: 1,
@@ -1109,6 +1140,8 @@ export default function Session() {
     // checkpoint resume. With these cleared, a subsequent loadCheckpoint()
     // returns null and the page is observably back to a fresh turn 1.
     clearCheckpoint();
+    resetImprovedReplay(queryClient);
+    eagerReplayFiredRef.current = false;
     autoRecordTriggeredRef.current = null;
     voiceSkippedRef.current = false;
     voiceAbortRef.current?.abort();
@@ -1270,6 +1303,8 @@ export default function Session() {
   const [endConfirmOpen, setEndConfirmOpen] = useState(false);
   function handleEndSession() {
     clearCheckpoint();
+    resetImprovedReplay(queryClient);
+    eagerReplayFiredRef.current = false;
     navigate("/");
   }
 

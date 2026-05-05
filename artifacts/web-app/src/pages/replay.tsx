@@ -15,11 +15,9 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
-import {
-  useGenerateImprovedReplay,
-  type ImprovedTurn,
-} from "@workspace/api-client-react";
+import { type ImprovedTurn } from "@workspace/api-client-react";
 import { categorizeApiError } from "@/lib/apiErrors";
+import { useImprovedReplay } from "@/hooks/useImprovedReplay";
 
 // ─── audio player ─────────────────────────────────────────────────────────────
 
@@ -178,20 +176,27 @@ function ReplaySkeleton() {
 export default function Replay() {
   const [, navigate] = useLocation();
 
-  const replayMutation = useGenerateImprovedReplay();
+  // Coordinated with /session and /feedback via the shared cache so a
+  // direct deep-link still works (cold mount fires the request) while
+  // the common case — eager request kicked off when turn 5 completed —
+  // renders cached data instantly with no extra round-trip. (R3)
+  const replay = useImprovedReplay();
 
   useEffect(() => {
-    replayMutation.mutate();
+    replay.ensureStarted().catch(() => {
+      // Surfaced via `replay.error` below — no console noise needed.
+    });
+    // ensureStarted is referentially stable (queryClient is stable);
+    // we deliberately mount-once.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const isLoading = replayMutation.isPending;
-  const turns = replayMutation.data ?? [];
-  const isError = replayMutation.isError && !isLoading && turns.length === 0;
+  const isLoading = replay.status === "pending";
+  const turns: ImprovedTurn[] = replay.data ?? [];
+  const isError = replay.status === "error" && turns.length === 0;
 
   function handleRetry() {
-    replayMutation.reset();
-    replayMutation.mutate();
+    replay.retry().catch(() => {});
   }
 
   return (
@@ -224,7 +229,7 @@ export default function Replay() {
         {/* Error */}
         {isError && (() => {
           const info = categorizeApiError(
-            replayMutation.error,
+            replay.error,
             "Generating the improved replay",
           );
           return (

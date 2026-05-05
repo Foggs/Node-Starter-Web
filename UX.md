@@ -18,10 +18,11 @@
   On Discard: clear `sessionStorage` checkpoint and start fresh.  
   *Acceptance:* user cannot click any session UI element while the recovery decision is pending.
 
-- [ ] **R3 — Trigger `POST /api/improved-replay` on session completion, not on page navigation**  
+- [x] **R3 — Trigger `POST /api/improved-replay` on session completion, not on page navigation**  
   Call `POST /api/improved-replay` automatically when turn 5 is confirmed complete, not lazily when the user navigates to `/replay`.  
   Show a background generation indicator on the feedback page ("Preparing your replay…") so the user knows it's coming.  
-  *Acceptance:* navigating directly to `/replay` never shows an empty or permanently loading state.
+  *Acceptance:* navigating directly to `/replay` never shows an empty or permanently loading state.  
+  *Verified May 2026:* shared `useImprovedReplay` hook backs `session.tsx` (eager fire on `complete` before `navigate("/feedback")`), `feedback.tsx` (inline pending/ready/error indicator with Retry next to "View improved replay"), and `replay.tsx` (cached read with no duplicate request). New unit tests in `session-eager-replay.test.tsx` and `replay-shared-cache.test.tsx` cover eager fire, cache reuse, and cold deep-link fallback.
 
 - [ ] **R4 — Include improved manager script in PDF export**  
   Add the LLM-rewritten manager turns to the `POST /api/export-report` pdfkit output.  

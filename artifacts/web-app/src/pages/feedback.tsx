@@ -39,6 +39,10 @@ import {
   type FeedbackSummary,
   type Turn,
 } from "@workspace/api-client-react";
+import {
+  useImprovedReplay,
+  type ImprovedReplayStatus,
+} from "@/hooks/useImprovedReplay";
 
 // ─── emotion arc chart ────────────────────────────────────────────────────────
 
@@ -272,6 +276,66 @@ function FeedbackSkeleton() {
 
 // ─── loaded feedback panel ────────────────────────────────────────────────────
 
+function ReplayPreparationStatus({
+  status,
+  onRetry,
+}: {
+  status: ImprovedReplayStatus;
+  onRetry: () => void;
+}) {
+  if (status === "idle") return null;
+
+  if (status === "pending") {
+    return (
+      <div
+        className="inline-flex items-center gap-2 text-xs text-slate-500"
+        role="status"
+        aria-live="polite"
+        data-testid="replay-status-pending"
+      >
+        <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
+        Preparing your replay…
+      </div>
+    );
+  }
+
+  if (status === "success") {
+    return (
+      <div
+        className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700"
+        role="status"
+        aria-live="polite"
+        data-testid="replay-status-ready"
+      >
+        <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
+        Replay ready
+      </div>
+    );
+  }
+
+  // error
+  return (
+    <div
+      className="inline-flex items-center gap-2 text-xs text-amber-700"
+      role="status"
+      aria-live="polite"
+      data-testid="replay-status-error"
+    >
+      <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />
+      <span>Couldn't prepare your replay.</span>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="h-6 px-2 text-amber-700"
+        onClick={onRetry}
+      >
+        <RefreshCw className="w-3 h-3 mr-1" aria-hidden="true" />
+        Retry
+      </Button>
+    </div>
+  );
+}
+
 function FeedbackPanel({
   feedback,
   turns,
@@ -281,6 +345,8 @@ function FeedbackPanel({
   exportError,
   exportSuccess,
   onDismissExportError,
+  replayStatus,
+  onReplayRetry,
 }: {
   feedback: FeedbackSummary;
   turns: Turn[];
@@ -290,6 +356,8 @@ function FeedbackPanel({
   exportError?: { title: string; body: string } | null;
   exportSuccess?: boolean;
   onDismissExportError?: () => void;
+  replayStatus: ImprovedReplayStatus;
+  onReplayRetry: () => void;
 }) {
   const [, navigate] = useLocation();
 
@@ -457,14 +525,20 @@ function FeedbackPanel({
             Report downloaded
           </span>
         )}
-        <Button
-          variant="outline"
-          className="gap-2 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
-          onClick={onReplay}
-        >
-          <Mic2 className="w-4 h-4" />
-          View improved replay
-        </Button>
+        <div className="flex flex-col gap-1.5">
+          <Button
+            variant="outline"
+            className="gap-2 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+            onClick={onReplay}
+          >
+            <Mic2 className="w-4 h-4" />
+            View improved replay
+          </Button>
+          <ReplayPreparationStatus
+            status={replayStatus}
+            onRetry={onReplayRetry}
+          />
+        </div>
         <div className="flex-1" />
         <Button
           className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold gap-2"
@@ -499,6 +573,24 @@ export default function Feedback() {
   const sessionQuery = useGetSession();
   const exportMutation = useExportReport();
   const feedbackSlow = useSlowRequestHint(feedbackMutation.isPending);
+
+  // Subscribe to the shared improved-replay cache. The eager fire happens
+  // in session.tsx the moment turn 5 completes, so the common case is that
+  // status is already "pending" or "success" by the time this page mounts.
+  // For deep-link / cold-reload scenarios where the session reached
+  // "complete" without going through that effect, kick the request off
+  // here as a safety net so the indicator + /replay both work. (R3)
+  const improvedReplay = useImprovedReplay();
+  useEffect(() => {
+    if (improvedReplay.status === "idle") {
+      improvedReplay.ensureStarted().catch(() => {});
+    }
+    // Fire once on mount based on the current cache snapshot.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  function handleReplayRetry() {
+    improvedReplay.retry().catch(() => {});
+  }
 
   const turns: Turn[] = sessionQuery.data?.turns ?? [];
 
@@ -722,6 +814,8 @@ export default function Feedback() {
             exportError={exportError}
             exportSuccess={exportSuccess}
             onDismissExportError={dismissExportError}
+            replayStatus={improvedReplay.status}
+            onReplayRetry={handleReplayRetry}
           />
         )}
 
