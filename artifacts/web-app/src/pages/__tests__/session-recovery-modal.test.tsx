@@ -280,6 +280,43 @@ describe("Session — recovery modal (R2)", () => {
     expect(sessionStorage.getItem(CHECKPOINT_KEY)).not.toBeNull();
   });
 
+  it("Resume routes through the onboarding redirect when readiness returns 400 with a missingStep", async () => {
+    seedCheckpoint();
+    let call = 0;
+    sessionReadyQueryFn.mockImplementation(async () => {
+      call += 1;
+      if (call === 1) return { ready: true };
+      const ApiErrorCtor = (await import("@workspace/api-client-react"))
+        .ApiError;
+      throw new ApiErrorCtor(400, { missingStep: 2 });
+    });
+
+    renderSession();
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const resume = await screen.findByRole("button", { name: /^resume$/i });
+    await act(async () => {
+      resume.click();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Modal closes — page transitioned into the redirect interstitial.
+    expect(screen.queryByRole("alertdialog")).not.toBeInTheDocument();
+    // Checkpoint cleared as part of the redirect path.
+    expect(sessionStorage.getItem(CHECKPOINT_KEY)).toBeNull();
+    // The interstitial is on screen rather than the practice surface.
+    expect(
+      screen.queryByRole("button", { name: /start recording/i }),
+    ).not.toBeInTheDocument();
+  });
+
   it("Resume reconciles with the readiness query, then applies saved turns and unmounts the modal", async () => {
     seedCheckpoint();
     renderSession();
