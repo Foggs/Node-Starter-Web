@@ -1042,14 +1042,22 @@ export default function Session() {
       const result = await sessionReadyQuery.refetch();
       if (result.isError) {
         const err = result.error;
-        // Only redirect on structured server-side rejections — a 400
-        // with a missing-step body, or a 401 unauthorised. Anything
-        // else (network failure, 5xx, unexpected shape) is treated as
-        // a transient error: keep the modal open with an inline Retry
-        // so the user can choose to try again or Discard. (R2)
-        const isAuthOrMissingStep =
-          err instanceof ApiError && (err.status === 400 || err.status === 401);
-        if (isAuthOrMissingStep) {
+        // Only redirect on structured server-side rejections that we
+        // recognise: a 401 unauthorised, or a 400 whose body carries a
+        // valid `missingStep`. Anything else (network failure, 5xx,
+        // unexpected 400 shape) is treated as transient: keep the
+        // modal open with an inline Retry so the user can try again
+        // or Discard. (R2)
+        let shouldRedirect = false;
+        if (err instanceof ApiError) {
+          if (err.status === 401) {
+            shouldRedirect = true;
+          } else if (err.status === 400) {
+            const body = err.data as { missingStep?: unknown } | null;
+            shouldRedirect = isMissingStep(body?.missingStep);
+          }
+        }
+        if (shouldRedirect) {
           redirectFromResume(err);
           return;
         }
