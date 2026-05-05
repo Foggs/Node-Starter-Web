@@ -29,7 +29,9 @@ vi.mock("../lib/elevenlabs.js", () => {
   return {
     cloneVoice: vi.fn(),
     deleteVoice: vi.fn().mockResolvedValue(undefined),
-    synthesizeSpeech: vi.fn(),
+    synthesizeSpeech: vi
+      .fn()
+      .mockResolvedValue(Buffer.from("fake-audio-bytes")),
     ElevenLabsError,
   };
 });
@@ -80,8 +82,9 @@ async function configureSession(cookie: string) {
     .expect(200);
 }
 
-async function injectTurns(cookie: string, count: number) {
-  for (let i = 1; i <= count; i++) {
+async function injectTurns(cookie: string, count: number, startIndex = 1) {
+  for (let n = 0; n < count; n++) {
+    const i = startIndex + n;
     vi.mocked(chatCompletion).mockResolvedValueOnce(
       JSON.stringify({ coachingTip: `Tip ${i}`, emotionScore: i + 3 }),
     );
@@ -199,5 +202,133 @@ describe("POST /api/export-report — happy path", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers["content-type"]).toMatch(/application\/pdf/);
+  });
+});
+
+// ── R4: improved manager script section ───────────────────────────────────────
+
+async function fetchPdf(cookie: string): Promise<Buffer> {
+  const res = await request(app)
+    .post("/api/export-report")
+    .set("Cookie", cookie)
+    .buffer(true)
+    .parse((r, cb) => {
+      const chunks: Buffer[] = [];
+      r.on("data", (c: Buffer) => chunks.push(c));
+      r.on("end", () => cb(null, Buffer.concat(chunks)));
+    });
+  expect(res.status).toBe(200);
+  return res.body as Buffer;
+}
+
+/**
+ * Extract visible text from a PDFKit-generated PDF (with `compress: false`).
+ *
+ * PDFKit emits text via `[ <hex> kerning <hex> ... ] TJ` operators. This
+ * helper concatenates the hex-decoded segments inside every TJ array,
+ * separating each TJ operator with a newline so we can do plain
+ * `.includes()` assertions on the rendered text.
+ */
+function extractPdfText(pdf: Buffer): string {
+  const raw = pdf.toString("latin1");
+  const out: string[] = [];
+  const tjRe = /\[([^\]]*)\]\s*TJ/g;
+  let m: RegExpExecArray | null;
+  while ((m = tjRe.exec(raw)) !== null) {
+    const inner = m[1] ?? "";
+    const hexRe = /<([0-9a-fA-F]+)>/g;
+    let h: RegExpExecArray | null;
+    let line = "";
+    while ((h = hexRe.exec(inner)) !== null) {
+      const hex = h[1] ?? "";
+      for (let i = 0; i + 1 < hex.length; i += 2) {
+        line += String.fromCharCode(parseInt(hex.substr(i, 2), 16));
+      }
+    }
+    if (line.length > 0) out.push(line);
+  }
+  return out.join("\n");
+}
+
+/**
+ * Runs POST /api/improved-replay so each manager turn in the session has its
+ * `improved_transcript` populated. Each rewrite body comes back as the mocked
+ * chatCompletion string, prefixed with the persona/turn opener from the
+ * `TURN_OPENERS` matrix in `lib/improvedReplay.ts`.
+ */
+async function generateImprovedReplay(cookie: string) {
+  vi.mocked(chatCompletion).mockResolvedValue(
+    "Here is a much more empathetic version of that.",
+  );
+  await request(app)
+    .post("/api/improved-replay")
+    .set("Cookie", cookie)
+    .expect(200);
+}
+
+describe("POST /api/export-report — R4 improved manager script", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it("renders the new section when every turn has an improved transcript", async () => {
+    const cookie = await mintSession();
+    await configureSession(cookie);
+    await injectTurns(cookie, 5);
+    await generateImprovedReplay(cookie);
+    await generateFeedback(cookie);
+
+    const text = extractPdfText(await fetchPdf(cookie));
+
+    expect(text).toContain("Manager Script");
+    expect(text).toContain("Your words");
+    expect(text).toContain("Suggested phrasing");
+    for (let i = 1; i <= 5; i++) {
+      expect(text).toContain(`Turn ${i}`);
+    }
+    // The mocked rewrite body appears in every turn's "Suggested phrasing".
+    expect(text).toContain("empathetic version");
+  });
+
+  it("omits the section entirely when no turn has an improved transcript", async () => {
+    const cookie = await mintSession();
+    await configureSession(cookie);
+    await injectTurns(cookie, 5);
+    await generateFeedback(cookie);
+    // No /api/improved-replay call — improved_transcript stays undefined.
+
+    const text = extractPdfText(await fetchPdf(cookie));
+
+    expect(text).not.toContain("Manager Script");
+    expect(text).not.toContain("Your words");
+    expect(text).not.toContain("Suggested phrasing");
+  });
+
+  it("renders only the populated turns when coverage is partial", async () => {
+    // Generate improved replay against 3 turns, then add 2 more turns
+    // afterwards so they remain without improved_transcript.
+    const cookie = await mintSession();
+    await configureSession(cookie);
+    await injectTurns(cookie, 3);
+    await generateImprovedReplay(cookie);
+    await injectTurns(cookie, 2, 4);
+    await generateFeedback(cookie);
+
+    const text = extractPdfText(await fetchPdf(cookie));
+
+    expect(text).toContain("Manager Script");
+    expect(text).toContain("Suggested phrasing");
+    // Only the first three turns have improved transcripts to render in the
+    // new section. Turns 4 and 5 still appear elsewhere in the report (e.g.
+    // the score table), so we scope the absence check to text that follows
+    // the "Manager Script" heading.
+    const scriptIdx = text.indexOf("Manager Script");
+    expect(scriptIdx).toBeGreaterThanOrEqual(0);
+    const scriptSection = text.slice(scriptIdx);
+    expect(scriptSection).toContain("Turn 1");
+    expect(scriptSection).toContain("Turn 2");
+    expect(scriptSection).toContain("Turn 3");
+    expect(scriptSection).not.toContain("Turn 4");
+    expect(scriptSection).not.toContain("Turn 5");
   });
 });

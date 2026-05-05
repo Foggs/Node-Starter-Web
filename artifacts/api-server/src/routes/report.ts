@@ -49,7 +49,12 @@ router.post("/export-report", sessionGuard, (req, res) => {
   const improvements = feedback?.improvements ?? [];
 
   // ── stream PDF to client ─────────────────────────────────────────────────
-  const doc = new PDFDocument({ size: "A4", margin: 50, autoFirstPage: true });
+  const doc = new PDFDocument({
+    size: "A4",
+    margin: 50,
+    autoFirstPage: true,
+    compress: false,
+  });
 
   res.setHeader("Content-Type", "application/pdf");
   res.setHeader(
@@ -210,6 +215,70 @@ router.post("/export-report", sessionGuard, (req, res) => {
     }
 
     doc.moveDown(0.5);
+  }
+
+  // ── manager script: your words vs suggested phrasing ─────────────────────
+  const scriptedTurns = managerTurns.filter(
+    (t) => typeof t.improved_transcript === "string" && t.improved_transcript.trim().length > 0,
+  );
+
+  if (scriptedTurns.length > 0) {
+    doc
+      .fontSize(13)
+      .fillColor(SLATE_900)
+      .font("Helvetica-Bold")
+      .text("Manager Script — Your Words vs Suggested Phrasing");
+
+    doc
+      .moveDown(0.4)
+      .moveTo(50, doc.y)
+      .lineTo(doc.page.width - 50, doc.y)
+      .strokeColor(SLATE_300)
+      .lineWidth(1)
+      .stroke()
+      .moveDown(0.6);
+
+    const bodyWidth = doc.page.width - 100;
+
+    scriptedTurns.forEach((turn, i) => {
+      doc
+        .fontSize(11)
+        .fillColor(SLATE_900)
+        .font("Helvetica-Bold")
+        .text(`Turn ${i + 1}`, { width: bodyWidth });
+
+      doc.moveDown(0.2);
+
+      doc
+        .fontSize(9)
+        .fillColor(SLATE_600)
+        .font("Helvetica-Bold")
+        .text("Your words", { width: bodyWidth });
+      doc
+        .fontSize(10)
+        .fillColor(SLATE_900)
+        .font("Helvetica")
+        .text(turn.transcript ?? "", { width: bodyWidth });
+
+      doc.moveDown(0.3);
+
+      doc
+        .fontSize(9)
+        .fillColor(AMBER)
+        .font("Helvetica-Bold")
+        .text("Suggested phrasing", { width: bodyWidth });
+      doc
+        .fontSize(10)
+        .fillColor(SLATE_900)
+        .font("Helvetica")
+        .text(turn.improved_transcript ?? "", { width: bodyWidth });
+
+      if (i < scriptedTurns.length - 1) {
+        doc.moveDown(0.6);
+      } else {
+        doc.moveDown(0.5);
+      }
+    });
   }
 
   // ── footer ────────────────────────────────────────────────────────────────
