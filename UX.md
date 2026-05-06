@@ -42,11 +42,12 @@
   *Acceptance:* a simulated 6-second processing delay feels purposeful, not broken.  
   *Verified:* both processing UI spots in `session.tsx` (chat-bubble placeholder and sticky control bar) now read from a shared `processingStep` state that resets to "transcribing" on each entry into the `processing` phase, swaps to "analysing" at ~2s with a short fade transition, and is cleaned up on phase change / unmount. Covered by `session-processing-messages.test.tsx` (immediate first message, swap after 2s in both spots, no late state updates after unmount).
 
-- [ ] **Y6 — Annotate peak emotion score on the Emotion Arc Chart**  
+- [x] **Y6 — Annotate peak emotion score on the Emotion Arc Chart**  
   Add a Recharts `<ReferenceDot>` on the highest `emotion_score` turn with a tooltip:  
   *"Your tone at turn [N] escalated the conversation — see coaching tip below."*  
   Dot colour: red/amber depending on score threshold. Tooltip on hover.  
-  *Acceptance:* the most important coaching moment is visually distinct from the other data points without reading the axis values.
+  *Acceptance:* the most important coaching moment is visually distinct from the other data points without reading the axis values.  
+  *Verified:* `EmotionArcChart` in `feedback.tsx` derives the peak turn (first-occurrence tie-break) and renders an enlarged red (>7) or amber (4–7) dot with a pulsing halo and an SVG `<title>` plus `aria-label` for keyboard/SR access; the chart's Tooltip surfaces the Y6 message inline when the peak point is hovered. Calm-band peaks (≤3) and single-turn sessions render no extra marker. The chart's `sr-only` summary now calls out which turn the peak occurred on. Covered by `feedback-peak-emotion.test.tsx` (red distressed peak, amber unsettled peak, calm-band omission, single-turn omission, tie → earliest turn, SR summary copy).
 
 - [x] **Y7 — 3-2-1 countdown before voice recording begins**  
   After microphone permission is granted and the user clicks Record, show a 3-2-1 countdown overlay before `MediaRecorder.start()` is called.  
@@ -99,7 +100,7 @@ These areas are well-implemented and should not be changed without a specific re
 | 6 | Y9 — Recording duration guidance | Low | Users under-record, poor clone |
 | 7 | Y5 — Processing state messages | Low | Wait feels broken |
 | 8 | Y8 — Coaching tip visual hierarchy | Low | Users read score before tip |
-| 9 | Y6 — Peak emotion annotation | Low | Chart tells story without insight |
+| 9 | ~~Y6 — Peak emotion annotation~~ ✅ done | Low | Chart tells story without insight |
 | 10 | Y10 — Inline improved turn autoplay | Medium | Weak emotional payoff |
 
 ---

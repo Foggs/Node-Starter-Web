@@ -58,7 +58,7 @@ function emotionLabel(score: number): string {
   return "distressed";
 }
 
-function EmotionArcChart({ emotionArc }: { emotionArc: number[] }) {
+export function EmotionArcChart({ emotionArc }: { emotionArc: number[] }) {
   const data = emotionArc.map((score, i) => ({ turn: `T${i + 1}`, score }));
   const avg = Math.round(
     emotionArc.reduce((a, b) => a + b, 0) / emotionArc.length,
@@ -74,6 +74,24 @@ function EmotionArcChart({ emotionArc }: { emotionArc: number[] }) {
         ? "increased"
         : "stayed roughly steady";
 
+  // Y6 — peak annotation. First-occurrence tie-break via indexOf. Only annotate
+  // when there are 2+ turns AND the peak crossed out of the calm band — a
+  // single-turn session has nothing to compare against, and a calm-band peak
+  // doesn't need to be visually distinguished from the regular line dots.
+  const peakIndex = emotionArc.length > 1 ? emotionArc.indexOf(peak) : -1;
+  const peakBand: "calm" | "unsettled" | "distressed" =
+    peak > 7 ? "distressed" : peak >= 4 ? "unsettled" : "calm";
+  const showPeakMarker = peakIndex >= 0 && peakBand !== "calm";
+  const peakColor = peakBand === "distressed" ? "#ef4444" : "#f59e0b";
+  const peakTurnNumber = peakIndex + 1;
+  const peakTooltipText = showPeakMarker
+    ? `Your tone at turn ${peakTurnNumber} escalated the conversation — see coaching tip below.`
+    : null;
+
+  const peakSummary = showPeakMarker
+    ? ` Peak ${peak} occurred at turn ${peakTurnNumber}.`
+    : "";
+
   const turnSummary = emotionArc
     .map(
       (s, i) =>
@@ -81,7 +99,7 @@ function EmotionArcChart({ emotionArc }: { emotionArc: number[] }) {
     )
     .join("; ");
 
-  const summary = `Employee emotional intensity across ${emotionArc.length} turn${emotionArc.length !== 1 ? "s" : ""}. Average ${avg} out of 10. Peak ${peak}, low ${low}. Intensity ${trend} from start to end. ${turnSummary}.`;
+  const summary = `Employee emotional intensity across ${emotionArc.length} turn${emotionArc.length !== 1 ? "s" : ""}. Average ${avg} out of 10. Peak ${peak}, low ${low}.${peakSummary} Intensity ${trend} from start to end. ${turnSummary}.`;
 
   return (
     <div
@@ -124,13 +142,35 @@ function EmotionArcChart({ emotionArc }: { emotionArc: number[] }) {
             tickLine={false}
           />
           <Tooltip
-            contentStyle={{
-              background: "white",
-              border: "1px solid #e2e8f0",
-              borderRadius: 8,
-              fontSize: 12,
+            content={({ active, payload, label }) => {
+              if (!active || !payload || payload.length === 0) return null;
+              const score = Number(payload[0]?.value ?? 0);
+              const turnNum = Number(String(label ?? "").replace(/^T/, ""));
+              const isPeak =
+                showPeakMarker && Number.isFinite(turnNum) && turnNum - 1 === peakIndex;
+              return (
+                <div
+                  style={{
+                    background: "white",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: 8,
+                    fontSize: 12,
+                    padding: "6px 10px",
+                    maxWidth: 220,
+                  }}
+                >
+                  <div className="text-slate-700">{score}/10 Intensity</div>
+                  {isPeak && peakTooltipText && (
+                    <div
+                      className="text-xs mt-1 text-red-700"
+                      data-testid="peak-tooltip-text"
+                    >
+                      {peakTooltipText}
+                    </div>
+                  )}
+                </div>
+              );
             }}
-            formatter={(val: number) => [`${val}/10`, "Intensity"]}
           />
           <ReferenceLine y={5} stroke="#e2e8f0" strokeDasharray="4 2" />
           <Line
@@ -138,12 +178,58 @@ function EmotionArcChart({ emotionArc }: { emotionArc: number[] }) {
             dataKey="score"
             stroke="#f59e0b"
             strokeWidth={2.5}
+            isAnimationActive={false}
             dot={(props) => {
               const { cx, cy, payload } = props as {
                 cx: number;
                 cy: number;
                 payload: { turn: string; score: number };
               };
+              const turnNum = Number(payload.turn.replace(/^T/, ""));
+              const isPeak = showPeakMarker && turnNum - 1 === peakIndex;
+              if (isPeak) {
+                return (
+                  <g
+                    key={payload.turn}
+                    tabIndex={0}
+                    role="img"
+                    aria-label={peakTooltipText ?? undefined}
+                    data-testid="peak-marker"
+                    style={{ outline: "none" }}
+                  >
+                    <circle
+                      cx={cx}
+                      cy={cy}
+                      r={11}
+                      fill={peakColor}
+                      fillOpacity={0.35}
+                    >
+                      <animate
+                        attributeName="r"
+                        values="9;15;9"
+                        dur="1.6s"
+                        repeatCount="indefinite"
+                      />
+                      <animate
+                        attributeName="fill-opacity"
+                        values="0.45;0;0.45"
+                        dur="1.6s"
+                        repeatCount="indefinite"
+                      />
+                    </circle>
+                    <circle
+                      cx={cx}
+                      cy={cy}
+                      r={8}
+                      fill={peakColor}
+                      stroke="white"
+                      strokeWidth={2.5}
+                    >
+                      <title>{peakTooltipText}</title>
+                    </circle>
+                  </g>
+                );
+              }
               return (
                 <circle
                   key={payload.turn}
