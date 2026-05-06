@@ -44,6 +44,30 @@ export interface HealthStatus {
 }
 
 /**
+ * Lead capture from the landing-page demo modal
+ */
+export interface LeadRequest {
+  /**
+   * Visitor's full name (will be trimmed)
+   * @minLength 2
+   * @maxLength 100
+   */
+  name: string;
+  /**
+   * Visitor's email address (will be lowercased)
+   * @maxLength 254
+   */
+  email: string;
+}
+
+/**
+ * 201 body — true even when the email was a duplicate
+ */
+export interface LeadResponse {
+  success: boolean;
+}
+
+/**
  * Unique scenario identifier
  */
 export type ScenarioId = (typeof ScenarioId)[keyof typeof ScenarioId];

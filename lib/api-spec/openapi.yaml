@@ -22,6 +22,8 @@ tags:
     description: Practice session, transcription, and coaching operations
   - name: report
     description: PDF coaching report generation
+  - name: leads
+    description: Lead capture from anonymous landing-page visitors
 
 paths:
   /healthz:
@@ -56,6 +58,51 @@ paths:
                     type: boolean
                 required:
                   - ok
+
+  /leads:
+    post:
+      operationId: createLead
+      tags: [leads]
+      summary: Capture a lead from the landing-page demo modal
+      description: |
+        Public endpoint — no session cookie required. The express-session
+        middleware mints a session cookie on the response so the caller can
+        navigate straight into POST /api/consent next.
+
+        Duplicate emails are silently de-duplicated (still 201) and skip the
+        Sheets append. All Sheets errors map to a generic 500 with no detail
+        leak. Per-IP rate limit: 5 requests per hour.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LeadRequest"
+      responses:
+        "201":
+          description: Lead captured (or silently de-duplicated)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LeadResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded for this IP
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal error (Sheets unreachable or misconfigured)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   /scenarios:
     get:
@@ -474,6 +521,33 @@ components:
           type: string
       required:
         - status
+
+    LeadRequest:
+      type: object
+      description: Lead capture from the landing-page demo modal
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          description: Visitor's full name (will be trimmed)
+        email:
+          type: string
+          format: email
+          maxLength: 254
+          description: Visitor's email address (will be lowercased)
+      required:
+        - name
+        - email
+
+    LeadResponse:
+      type: object
+      description: 201 body — true even when the email was a duplicate
+      properties:
+        success:
+          type: boolean
+      required:
+        - success
 
     Scenario:
       type: object
