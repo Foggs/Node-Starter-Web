@@ -13,6 +13,7 @@
   "private": true,
   "devDependencies": {
     "@playwright/test": "^1.59.1",
+    "@rollup/rollup-darwin-x64": "4.59.0",
     "prettier": "^3.8.1",
     "typescript": "~5.9.2"
   }
