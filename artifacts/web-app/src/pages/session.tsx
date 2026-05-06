@@ -798,6 +798,29 @@ export default function Session() {
     phase.tag === "processing" && coachingTipMutation.isPending,
   );
 
+  // ── Y5: two-step processing status copy ──
+  // While the recording is being transcribed + analysed (~6s) we show a
+  // sequenced message so the wait feels deliberate. The first message
+  // ("Transcribing…") shows immediately; after 2s it transitions to the
+  // second ("Analysing tone and phrasing…"). Resets cleanly each time the
+  // phase enters `processing`, and the timer is cancelled when the phase
+  // changes or the component unmounts.
+  const [processingStep, setProcessingStep] = useState<
+    "transcribing" | "analysing"
+  >("transcribing");
+  const processingTurnKey =
+    phase.tag === "processing" ? phase.turnNum : null;
+  useEffect(() => {
+    if (processingTurnKey === null) return;
+    setProcessingStep("transcribing");
+    const id = setTimeout(() => setProcessingStep("analysing"), 2000);
+    return () => clearTimeout(id);
+  }, [processingTurnKey]);
+  const processingMessage =
+    processingStep === "transcribing"
+      ? "Transcribing your response…"
+      : "Analysing tone and phrasing…";
+
   // ── auto-scroll ──
   useEffect(() => {
     scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -1596,7 +1619,13 @@ export default function Session() {
               </div>
               <div className="bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 flex items-center gap-2 text-sm text-slate-500">
                 <Loader2 className="w-4 h-4 animate-spin" />
-                Analysing your response…
+                <span
+                  key={processingStep}
+                  className="transition-opacity duration-300 ease-out animate-in fade-in"
+                  data-testid="processing-bubble-message"
+                >
+                  {processingMessage}
+                </span>
               </div>
             </div>
           )}
@@ -1729,7 +1758,13 @@ export default function Session() {
                 <div className="flex flex-col gap-2">
                   <div className="flex items-center justify-center gap-2 text-sm text-slate-400 py-1">
                     <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
-                    Getting your coaching tip…
+                    <span
+                      key={processingStep}
+                      className="transition-opacity duration-300 ease-out animate-in fade-in"
+                      data-testid="processing-bar-message"
+                    >
+                      {processingMessage}
+                    </span>
                   </div>
                   {coachingTipSlow && (
                     <SlowRequestHint

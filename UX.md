@@ -34,12 +34,13 @@
 
 ## 🟡 Yellow Lights — Implement Second
 
-- [ ] **Y5 — Two-step processing state message during Whisper + GPT call**  
+- [x] **Y5 — Two-step processing state message during Whisper + GPT call**  
   In the `processing` state between recording and coaching tip display, show animated sequential messages:  
   - 0–2s: "Transcribing your response…"  
   - 2s+: "Analysing tone and phrasing…"  
   Switch text after 2 seconds using a `setTimeout` — no additional API calls required.  
-  *Acceptance:* a simulated 6-second processing delay feels purposeful, not broken.
+  *Acceptance:* a simulated 6-second processing delay feels purposeful, not broken.  
+  *Verified:* both processing UI spots in `session.tsx` (chat-bubble placeholder and sticky control bar) now read from a shared `processingStep` state that resets to "transcribing" on each entry into the `processing` phase, swaps to "analysing" at ~2s with a short fade transition, and is cleaned up on phase change / unmount. Covered by `session-processing-messages.test.tsx` (immediate first message, swap after 2s in both spots, no late state updates after unmount).
 
 - [ ] **Y6 — Annotate peak emotion score on the Emotion Arc Chart**  
   Add a Recharts `<ReferenceDot>` on the highest `emotion_score` turn with a tooltip:  
