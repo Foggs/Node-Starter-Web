@@ -13,15 +13,20 @@
  * artifacts/web-app/public/demo/{file}.mp3 — overwriting the silent
  * placeholders committed in slice 5.
  *
- * After running, manually update
- *   artifacts/web-app/public/demo/manifest.json
- * with actual durations (e.g. via `ffprobe -i <file> -show_format` or
- * macOS Quick Look). useDemoPlayback uses these for timer math.
+ * After each clip is written, we shell out to `afinfo` (macOS, built-in)
+ * with `ffprobe` as a fallback to read the duration, round it to the
+ * nearest 100 ms, and rewrite manifest.json so useDemoPlayback's timer
+ * math matches reality. If neither tool is available the script prints
+ * a warning per file and leaves the manifest untouched.
  */
 
-import { writeFile, mkdir } from "node:fs/promises";
+import { writeFile, mkdir, readFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileP = promisify(execFile);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -84,6 +89,80 @@ const CLIPS: ClipSpec[] = [
   },
 ];
 
+const MANIFEST_PATH = resolve(PUBLIC_DEMO, "manifest.json");
+
+// ─── duration detection ─────────────────────────────────────────────────────
+
+/**
+ * Read the duration of an MP3 in seconds. Tries `afinfo` (macOS, built-in)
+ * first, falls back to `ffprobe`. Returns `null` if neither tool is on the
+ * PATH or if both fail to parse the file — caller will skip the manifest
+ * update for that clip and warn.
+ */
+async function getDurationSeconds(filepath: string): Promise<number | null> {
+  // afinfo — macOS Audio Toolbox CLI. Output includes a line like:
+  //   estimated duration: 14.157551 sec
+  try {
+    const { stdout } = await execFileP("afinfo", [filepath]);
+    const m = stdout.match(/estimated duration:\s*([\d.]+)\s*sec/i);
+    if (m && m[1]) return Number(m[1]);
+  } catch {
+    // afinfo not available or failed — try ffprobe
+  }
+
+  try {
+    const { stdout } = await execFileP("ffprobe", [
+      "-v",
+      "error",
+      "-show_entries",
+      "format=duration",
+      "-of",
+      "csv=p=0",
+      filepath,
+    ]);
+    const n = Number(stdout.trim());
+    if (Number.isFinite(n) && n > 0) return n;
+  } catch {
+    // ffprobe not available either
+  }
+
+  return null;
+}
+
+interface ManifestFileEntry {
+  expectedDurationMs: number;
+  voice: string;
+  stability: number;
+}
+
+interface Manifest {
+  $comment?: string;
+  files: Record<string, ManifestFileEntry>;
+}
+
+/**
+ * Round seconds → ms, snapped to the nearest 100ms. Avoids noise like
+ * 9001 / 8999 when the underlying duration only changes microseconds
+ * between regenerations.
+ */
+function secondsToRoundedMs(seconds: number): number {
+  return Math.round((seconds * 1000) / 100) * 100;
+}
+
+async function updateManifest(durations: Map<string, number>): Promise<void> {
+  const raw = await readFile(MANIFEST_PATH, "utf8");
+  const data = JSON.parse(raw) as Manifest;
+  for (const [filename, ms] of durations) {
+    const entry = data.files[filename];
+    if (!entry) {
+      console.warn(`  manifest has no entry for ${filename} — skipping`);
+      continue;
+    }
+    entry.expectedDurationMs = ms;
+  }
+  await writeFile(MANIFEST_PATH, JSON.stringify(data, null, 2) + "\n");
+}
+
 // ─── synth ───────────────────────────────────────────────────────────────────
 
 async function synthesise(
@@ -127,23 +206,53 @@ async function synthesise(
 async function main() {
   await mkdir(PUBLIC_DEMO, { recursive: true });
 
+  const durations = new Map<string, number>();
+  const missingDuration: string[] = [];
+
   for (const clip of CLIPS) {
     process.stdout.write(`→ ${clip.filename} (stability ${clip.stability})… `);
     const audio = await synthesise(clip.voiceId, clip.text, clip.stability);
     const out = resolve(PUBLIC_DEMO, clip.filename);
     await writeFile(out, audio);
-    console.log(`${audio.byteLength.toLocaleString()} bytes`);
+
+    const seconds = await getDurationSeconds(out);
+    if (seconds !== null) {
+      const ms = secondsToRoundedMs(seconds);
+      durations.set(clip.filename, ms);
+      console.log(
+        `${audio.byteLength.toLocaleString()} bytes (${seconds.toFixed(2)}s)`,
+      );
+    } else {
+      missingDuration.push(clip.filename);
+      console.log(
+        `${audio.byteLength.toLocaleString()} bytes (duration unknown)`,
+      );
+    }
   }
 
-  console.log("\nDone. Next steps:");
+  if (durations.size > 0) {
+    await updateManifest(durations);
+    console.log("manifest.json updated.");
+  }
+
+  if (missingDuration.length > 0) {
+    console.warn(
+      "\nWarning — could not detect duration for the following files:",
+    );
+    for (const f of missingDuration) console.warn(`  - ${f}`);
+    console.warn(
+      "Install afinfo (macOS built-in) or ffmpeg (`brew install ffmpeg`) and rerun,",
+    );
+    console.warn(
+      "or update artifacts/web-app/public/demo/manifest.json manually.",
+    );
+  }
+
   console.log(
-    "  1. Listen to each file (e.g. open in Quick Look) and confirm the audio sounds right.",
+    "\nDone. Listen to each file (Finder → Quick Look) and confirm the improved",
   );
   console.log(
-    "  2. Update manifest.json `expectedDurationMs` per file to match the new lengths.",
-  );
-  console.log(
-    "       ffprobe -v error -show_entries format=duration -of csv=p=0 <file>",
+    "replay sounds noticeably more composed than the original.",
   );
 }
 
