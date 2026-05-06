@@ -47,7 +47,7 @@
   Dot colour: red/amber depending on score threshold. Tooltip on hover.  
   *Acceptance:* the most important coaching moment is visually distinct from the other data points without reading the axis values.
 
-- [ ] **Y7 — 3-2-1 countdown before voice recording begins**  
+- [x] **Y7 — 3-2-1 countdown before voice recording begins**  
   After microphone permission is granted and the user clicks Record, show a 3-2-1 countdown overlay before `MediaRecorder.start()` is called.  
   This eliminates clipped first-syllable audio causing degraded clone quality.  
   *Acceptance:* recording starts at 0 — not before. The countdown cannot be skipped.
@@ -94,7 +94,7 @@ These areas are well-implemented and should not be changed without a specific re
 | 2 | R3 — Replay triggered on completion | Low | Empty replay page on direct nav |
 | 3 | R2 — Recovery banner blocking modal | Medium | Session state corruption |
 | 4 | R4 — Improved script in PDF | Medium | PDF not worth sharing |
-| 5 | Y7 — Recording countdown | Low | Clipped audio, poor clone quality |
+| 5 | ~~Y7 — Recording countdown~~ ✅ done | Low | Clipped audio, poor clone quality |
 | 6 | Y9 — Recording duration guidance | Low | Users under-record, poor clone |
 | 7 | Y5 — Processing state messages | Low | Wait feels broken |
 | 8 | Y8 — Coaching tip visual hierarchy | Low | Users read score before tip |

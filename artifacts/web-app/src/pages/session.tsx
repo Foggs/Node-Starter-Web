@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useLocation } from "wouter";
 import {
   Mic,
@@ -85,6 +86,7 @@ interface CompletedTurn {
 type Phase =
   | { tag: "fetching_employee"; turnNum: number }
   | { tag: "employee"; turnNum: number; text: string }
+  | { tag: "counting_down"; turnNum: number; text: string; count: number }
   | { tag: "recording"; turnNum: number }
   | { tag: "reviewing"; turnNum: number; text: string; blob: Blob }
   | { tag: "processing"; turnNum: number }
@@ -1175,8 +1177,22 @@ export default function Session() {
     coachingAbortRef.current?.abort();
   }
 
-  const startRecording = useCallback(async () => {
+  // Y7: Recording is gated behind a 3-2-1 countdown. Both the auto-start
+  // effect and the manual button transition into the `counting_down` phase
+  // first; this `startRecording` is only invoked when the count hits zero,
+  // so MediaRecorder.start() never clips the user's first syllable.
+  const beginCountdown = useCallback(() => {
     if (phase.tag !== "employee") return;
+    setPhase({
+      tag: "counting_down",
+      turnNum: phase.turnNum,
+      text: phase.text,
+      count: 3,
+    });
+  }, [phase]);
+
+  const startRecording = useCallback(async () => {
+    if (phase.tag !== "counting_down") return;
     const { turnNum, text } = phase;
 
     try {
@@ -1201,8 +1217,48 @@ export default function Session() {
     } catch (err) {
       const info = categorizeMicError(err);
       setFetchError(`${info.title}. ${info.body}`);
+      // Mic failed at the bottom of the countdown — drop the overlay and
+      // let the user retry from the regular employee state.
+      setPhase({ tag: "employee", turnNum, text });
     }
   }, [phase]);
+
+  // While the countdown is up, mark the React app root as `inert` so no
+  // underlying control (Skip, End session, top-bar links, etc.) can be
+  // clicked OR focused via keyboard. The overlay itself is rendered as a
+  // sibling outside #root so it stays interactive/focusable.
+  const countdownOverlayRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (phase.tag !== "counting_down") return;
+    const root = document.getElementById("root");
+    if (root) root.setAttribute("inert", "");
+    // Move focus into the overlay so keyboard activity (Enter, Space)
+    // cannot accidentally trigger a now-inert underlying button.
+    countdownOverlayRef.current?.focus();
+    return () => {
+      if (root) root.removeAttribute("inert");
+    };
+  }, [phase.tag]);
+
+  // Drive the 3-2-1 countdown. Each tick decrements the count; once it
+  // would go below 1 we invoke startRecording so MediaRecorder.start()
+  // fires exactly when the overlay would have shown "0".
+  useEffect(() => {
+    if (phase.tag !== "counting_down") return;
+    const id = setTimeout(() => {
+      if (phase.count > 1) {
+        setPhase({
+          tag: "counting_down",
+          turnNum: phase.turnNum,
+          text: phase.text,
+          count: phase.count - 1,
+        });
+      } else {
+        startRecording();
+      }
+    }, 1000);
+    return () => clearTimeout(id);
+  }, [phase, startRecording]);
 
   function stopRecording() {
     recorderRef.current?.stop();
@@ -1225,10 +1281,10 @@ export default function Session() {
     if (autoRecordTriggeredRef.current === phase.turnNum) return;
     autoRecordTriggeredRef.current = phase.turnNum;
     const id = setTimeout(() => {
-      startRecording();
+      beginCountdown();
     }, 350);
     return () => clearTimeout(id);
-  }, [phase, voiceFetching, voiceFailed, player.playbackState, startRecording]);
+  }, [phase, voiceFetching, voiceFailed, player.playbackState, beginCountdown]);
 
   function submitRecording() {
     if (phase.tag !== "reviewing") return;
@@ -1618,7 +1674,7 @@ export default function Session() {
                     size="lg"
                     variant="outline"
                     className="w-full text-slate-700 border-slate-300 gap-2"
-                    onClick={startRecording}
+                    onClick={beginCountdown}
                   >
                     <Mic className="w-4 h-4" /> Start Recording
                   </Button>
@@ -1627,6 +1683,21 @@ export default function Session() {
                       Recording will start automatically — or press to start now
                     </p>
                   )}
+                </div>
+              )}
+
+              {phase.tag === "counting_down" && (
+                // Reserve the same vertical space the recording UI will take
+                // so the card doesn't jump when the countdown finishes and
+                // the Stop button appears underneath the (dismissed) overlay.
+                <div
+                  className="flex flex-col items-center gap-2"
+                  aria-hidden="true"
+                >
+                  <div className="w-full h-11 rounded-md bg-slate-100" />
+                  <p className="text-xs text-transparent select-none">
+                    placeholder
+                  </p>
                 </div>
               )}
 
@@ -1711,6 +1782,35 @@ export default function Session() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Y7 — 3-2-1 countdown overlay. Rendered through a portal to
+          document.body so it lives outside the #root tree we mark
+          `inert` during the countdown. That keeps the overlay itself
+          interactive/focusable while every underlying control (Skip,
+          End session, top-bar links) is unreachable by both pointer
+          AND keyboard. */}
+      {phase.tag === "counting_down" &&
+        createPortal(
+          <div
+            ref={countdownOverlayRef}
+            role="status"
+            aria-live="assertive"
+            aria-label={`Recording starts in ${phase.count}`}
+            tabIndex={-1}
+            className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-slate-900/80 backdrop-blur-sm outline-none"
+          >
+            <div
+              key={phase.count}
+              className="text-amber-400 font-bold text-[14rem] leading-none drop-shadow-2xl tabular-nums"
+            >
+              {phase.count}
+            </div>
+            <p className="mt-6 text-base text-slate-200">
+              Get ready — recording starts in {phase.count}…
+            </p>
+          </div>,
+          document.body,
+        )}
     </AppShell>
   );
 }
