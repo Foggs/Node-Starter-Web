@@ -22,7 +22,6 @@ import { useCallback, useEffect, useReducer, useRef } from "react";
 
 /** Phases that auto-advance after a fixed duration. */
 export type TimedPhase =
-  | "title_card"
   | "showing_tip_1"
   | "arc_dot_1"
   | "showing_tip_2"
@@ -34,8 +33,12 @@ export type TimedPhase =
   | "tease_closing"
   | "reveal_copy";
 
-/** Phases that wait on an external event (audio end, form submit, etc). */
+/**
+ * Phases that wait on an external event (user click, audio end, form submit).
+ * `title_card` waits for an explicit Continue click — no auto-dismiss timer.
+ */
 export type EventDrivenPhase =
+  | "title_card"
   | "playing_employee_1"
   | "playing_manager_2"
   | "playing_employee_3"
@@ -46,10 +49,10 @@ export type EventDrivenPhase =
 export type Phase = "idle" | "complete" | "paused" | TimedPhase | EventDrivenPhase;
 
 /**
- * Durations in ms for each timed phase. Sum + audio runtime ≈ 100s,
- * matching the spec total.
+ * Durations in ms for each timed phase. Sum + audio runtime ≈ 95s,
+ * matching the spec total. (title_card is event-driven now — user clicks
+ * Continue when ready.)
  *
- *  - `title_card`     2000ms = 300 fade-in + 1400 hold + 300 fade-out
  *  - `showing_tip_*`  2300ms =  800 gap + 1500 display
  *  - `arc_dot_*`       800ms (hold before next turn or tease)
  *  - `arc_done`        600ms (gap between arc-3 and tease slide-in)
@@ -58,7 +61,6 @@ export type Phase = "idle" | "complete" | "paused" | TimedPhase | EventDrivenPha
  *  - `reveal_copy`    1200ms = 400 fade-in + 800 hold
  */
 export const PHASE_DURATIONS: Record<TimedPhase, number> = {
-  title_card: 2000,
   showing_tip_1: 2300,
   arc_dot_1: 800,
   showing_tip_2: 2300,
@@ -70,9 +72,6 @@ export const PHASE_DURATIONS: Record<TimedPhase, number> = {
   tease_closing: 1500,
   reveal_copy: 1200,
 };
-
-/** Title-card click-to-skip becomes available after the fade-in completes. */
-export const TITLE_CARD_SKIP_AFTER_MS = 300;
 
 // ─── state ───────────────────────────────────────────────────────────────────
 
@@ -245,11 +244,9 @@ export interface UseDemoPlaybackReturn {
   phase: Phase;
   /** When paused, the phase that will be resumed into. Otherwise null. */
   pausedResumeTo: Exclude<Phase, "paused"> | null;
-  /** True once the title card's skip window has elapsed. */
-  titleCardSkippable: boolean;
   /** Begin the demo (idle → title_card). */
   start: () => void;
-  /** Click-to-skip the title card. */
+  /** User clicked Continue on the title card → start playback. */
   skipTitleCard: () => void;
   /** Tell the machine the audio for the current `playing_*` / `tease_audio` phase finished. */
   notifyAudioEnded: () => void;
@@ -269,12 +266,6 @@ export interface UseDemoPlaybackReturn {
 
 export function useDemoPlayback(): UseDemoPlaybackReturn {
   const [state, dispatch] = useReducer(demoPlaybackReducer, initialState);
-
-  // Title-card skippable flag — an internal timer flips it after 300ms.
-  const [titleCardSkippable, setTitleCardSkippable] = useReducer(
-    (_: boolean, next: boolean) => next,
-    false,
-  );
 
   // ── timed-phase scheduler ─────────────────────────────────────────────────
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -305,19 +296,6 @@ export function useDemoPlayback(): UseDemoPlaybackReturn {
     };
   }, [state]);
 
-  // ── title-card skip-window ───────────────────────────────────────────────
-  useEffect(() => {
-    if (state.phase !== "title_card") {
-      setTitleCardSkippable(false);
-      return;
-    }
-    setTitleCardSkippable(false);
-    const t = setTimeout(() => {
-      setTitleCardSkippable(true);
-    }, TITLE_CARD_SKIP_AFTER_MS);
-    return () => clearTimeout(t);
-  }, [state.phase]);
-
   const start = useCallback(() => dispatch({ type: "START" }), []);
   const skipTitleCard = useCallback(() => dispatch({ type: "SKIP_TITLE" }), []);
   const notifyAudioEnded = useCallback(
@@ -340,7 +318,6 @@ export function useDemoPlayback(): UseDemoPlaybackReturn {
   return {
     phase: state.phase,
     pausedResumeTo: state.phase === "paused" ? state.resumeTo : null,
-    titleCardSkippable,
     start,
     skipTitleCard,
     notifyAudioEnded,

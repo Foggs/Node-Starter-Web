@@ -26,11 +26,14 @@ export interface DemoTurn {
 export interface DemoScript {
   scenarioName: string;
   personaName: string;
-  /** Title card: short, plain-language framing shown for 2s before playback. */
+  /**
+   * Intro / title card content shown before playback. Waits for an explicit
+   * Continue click — no auto-dismiss. Sets expectations so the user knows
+   * what they're about to watch.
+   */
   titleCard: {
-    line1: string;
-    line2: string;
-    line3: string;
+    heading: string;
+    bullets: [string, string, string];
   };
   turns: [DemoTurn, DemoTurn, DemoTurn];
   /** Side-by-side comparison shown after turn 3. */
@@ -48,9 +51,12 @@ export const DEMO_SCRIPT: DemoScript = {
   scenarioName: "Layoff conversation",
   personaName: "Alex — Defensive",
   titleCard: {
-    line1: "Scenario: Layoff conversation",
-    line2: "Employee: Alex — Defensive",
-    line3: "Watch how the coaching works.",
+    heading: "What you'll see",
+    bullets: [
+      "3 scripted turns of a tough layoff conversation",
+      "Real-time coaching tips after each of your turns",
+      "An improved version of your reply played back at the end",
+    ],
   },
   turns: [
     {

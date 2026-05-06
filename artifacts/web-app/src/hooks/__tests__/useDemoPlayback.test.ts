@@ -2,7 +2,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { act, renderHook } from "@testing-library/react";
 import {
   PHASE_DURATIONS,
-  TITLE_CARD_SKIP_AFTER_MS,
   demoPlaybackReducer,
   useDemoPlayback,
   type DemoPlaybackState,
@@ -95,24 +94,23 @@ describe("useDemoPlayback — timed-phase scheduling", () => {
     vi.useRealTimers();
   });
 
-  it("title_card auto-advances to playing_employee_1 after 2s", () => {
+  it("title_card waits for an explicit Continue click — no auto-dismiss", () => {
     const { result } = renderHook(() => useDemoPlayback());
 
     act(() => {
       result.current.start();
     });
     expect(result.current.phase).toBe("title_card");
-    expect(result.current.titleCardSkippable).toBe(false);
 
-    // Skip window opens at 300ms
+    // No timer should advance the title card on its own.
     act(() => {
-      vi.advanceTimersByTime(TITLE_CARD_SKIP_AFTER_MS);
+      vi.advanceTimersByTime(60_000);
     });
-    expect(result.current.titleCardSkippable).toBe(true);
+    expect(result.current.phase).toBe("title_card");
 
-    // Auto-dismiss at 2000ms total
+    // Only an explicit click advances.
     act(() => {
-      vi.advanceTimersByTime(PHASE_DURATIONS.title_card - TITLE_CARD_SKIP_AFTER_MS);
+      result.current.skipTitleCard();
     });
     expect(result.current.phase).toBe("playing_employee_1");
   });
@@ -270,9 +268,10 @@ describe("useDemoPlayback — timed-phase scheduling", () => {
     });
     expect(result.current.phase).toBe("idle");
 
-    // Even after the would-be auto-dismiss, we stay idle (timer was cancelled).
+    // Time passing after close should not pull us out of idle (no timers
+    // left to fire — title_card is event-driven and would be paused anyway).
     act(() => {
-      vi.advanceTimersByTime(PHASE_DURATIONS.title_card * 2);
+      vi.advanceTimersByTime(60_000);
     });
     expect(result.current.phase).toBe("idle");
   });

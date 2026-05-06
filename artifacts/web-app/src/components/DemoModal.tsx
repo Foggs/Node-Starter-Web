@@ -60,6 +60,42 @@ function rankPhase(p: Phase, resumeTo: Phase | null): number {
   return FORWARD_FOR_VISIBILITY.indexOf(p);
 }
 
+/**
+ * Maps a phase to the DOM `id` of the section the modal should auto-scroll
+ * into view. `null` means no scroll (e.g. while the title-card overlay covers
+ * the modal — there's nothing else to scroll to).
+ */
+function getActiveAnchorId(phase: Phase): string | null {
+  switch (phase) {
+    case "playing_employee_1":
+      return "demo-turn-1";
+    case "playing_manager_2":
+      return "demo-turn-2";
+    case "playing_employee_3":
+      return "demo-turn-3";
+    case "showing_tip_1":
+    case "showing_tip_2":
+    case "showing_tip_3":
+      return "demo-tip";
+    case "arc_dot_1":
+    case "arc_dot_2":
+    case "arc_dot_3":
+    case "arc_done":
+      return "demo-arc";
+    case "tease_header":
+    case "tease_audio":
+    case "tease_closing":
+      return "demo-tease";
+    case "reveal_copy":
+      return "demo-reveal";
+    case "lead_capture":
+    case "submitting":
+      return "demo-form";
+    default:
+      return null;
+  }
+}
+
 /** How many turns are visible (have at least started playing) at this phase. */
 function visibleTurnCount(rank: number): number {
   if (rank >= FORWARD_FOR_VISIBILITY.indexOf("playing_employee_3")) return 3;
@@ -150,6 +186,17 @@ export function DemoModal({ open, onOpenChange }: DemoModalProps) {
   const rank = rankPhase(playback.phase, playback.pausedResumeTo);
   const isPaused = playback.phase === "paused";
 
+  // ── auto-scroll to active section on phase change ────────────────────────
+  // Suspended while paused so the user can read whatever they paused on
+  // without the modal yanking them somewhere else mid-read.
+  useEffect(() => {
+    if (isPaused) return;
+    const id = getActiveAnchorId(effectivePhase);
+    if (!id) return;
+    const el = document.getElementById(id);
+    el?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }, [effectivePhase, isPaused]);
+
   const showTitleCard = effectivePhase === "title_card";
   const showTease =
     rank >= FORWARD_FOR_VISIBILITY.indexOf("arc_done") &&
@@ -188,59 +235,67 @@ export function DemoModal({ open, onOpenChange }: DemoModalProps) {
           <X className="w-5 h-5" />
         </button>
 
-        {/* Title card overlay — covers everything when active */}
+        {/* Title card overlay — covers everything until the user clicks Continue */}
         {showTitleCard && (
-          <button
-            onClick={() => {
-              if (playback.titleCardSkippable) playback.skipTitleCard();
-            }}
-            className="absolute inset-0 z-40 flex items-center justify-center bg-white text-center p-8 transition-opacity duration-300"
+          <div
+            className="absolute inset-0 z-40 flex items-center justify-center bg-white text-center p-8"
             data-testid="demo-title-card"
-            aria-label="Skip introduction"
           >
-            <div>
-              <p className="text-sm text-slate-500">{DEMO_SCRIPT.titleCard.line1}</p>
-              <p className="text-sm text-slate-500 mt-1">
-                {DEMO_SCRIPT.titleCard.line2}
+            <div className="max-w-md">
+              <p className="text-xl font-semibold text-slate-900 mb-6">
+                {DEMO_SCRIPT.titleCard.heading}
               </p>
-              <p className="text-xl font-semibold text-slate-900 mt-6">
-                {DEMO_SCRIPT.titleCard.line3}
-              </p>
-              {playback.titleCardSkippable && (
-                <p className="text-xs text-slate-400 mt-8">Click to skip</p>
-              )}
+              <ul className="text-sm text-slate-600 leading-relaxed space-y-2 text-left mb-8">
+                {DEMO_SCRIPT.titleCard.bullets.map((b) => (
+                  <li key={b} className="flex gap-2">
+                    <span className="text-amber-500 mt-0.5">•</span>
+                    <span>{b}</span>
+                  </li>
+                ))}
+              </ul>
+              <Button
+                size="lg"
+                onClick={playback.skipTitleCard}
+                data-testid="demo-continue-button"
+                className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-8 gap-2"
+              >
+                Continue →
+              </Button>
             </div>
-          </button>
+          </div>
         )}
 
         {/* Conversation view */}
         <div className="p-6 space-y-4">
-          {/* Turn bubbles */}
+          {/* Turn bubbles — each gets a stable id for auto-scroll targeting */}
           <div className="space-y-3">
             {DEMO_SCRIPT.turns.slice(0, turnCount).map((turn, i) => (
-              <TurnBubble
-                key={turn.turnIndex}
-                turn={turn}
-                speaking={
-                  i + 1 === turnCount &&
-                  effectivePhase.startsWith("playing_") &&
-                  !isPaused
-                }
-              />
+              <div key={turn.turnIndex} id={`demo-turn-${turn.turnIndex}`}>
+                <TurnBubble
+                  turn={turn}
+                  speaking={
+                    i + 1 === turnCount &&
+                    effectivePhase.startsWith("playing_") &&
+                    !isPaused
+                  }
+                />
+              </div>
             ))}
           </div>
 
           {/* Coaching tip — only the latest one is "live", earlier ones are summary cards */}
           {tipCount > 0 && (
-            <CoachingTipCard
-              tip={DEMO_SCRIPT.turns[tipCount - 1]!.coachingTip}
-              turnNumber={tipCount}
-            />
+            <div id="demo-tip">
+              <CoachingTipCard
+                tip={DEMO_SCRIPT.turns[tipCount - 1]!.coachingTip}
+                turnNumber={tipCount}
+              />
+            </div>
           )}
 
           {/* Arc — visible from arc_dot_1 onward */}
           {arcCount > 0 && (
-            <Card className="border-slate-200">
+            <Card id="demo-arc" className="border-slate-200">
               <CardContent className="pt-4 pb-4">
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-sm font-medium text-slate-700">
@@ -261,13 +316,15 @@ export function DemoModal({ open, onOpenChange }: DemoModalProps) {
 
           {/* Tease */}
           {showTease && (
-            <ImprovedReplayTease
-              originalText={DEMO_SCRIPT.improvedReplay.originalTranscript}
-              improvedText={DEMO_SCRIPT.improvedReplay.improvedTranscript}
-              improvedAudioSrc={DEMO_SCRIPT.improvedReplay.audioSrc}
-              onAudioEnded={playback.notifyAudioEnded}
-              paused={isPaused}
-            />
+            <div id="demo-tease">
+              <ImprovedReplayTease
+                originalText={DEMO_SCRIPT.improvedReplay.originalTranscript}
+                improvedText={DEMO_SCRIPT.improvedReplay.improvedTranscript}
+                improvedAudioSrc={DEMO_SCRIPT.improvedReplay.audioSrc}
+                onAudioEnded={playback.notifyAudioEnded}
+                paused={isPaused}
+              />
+            </div>
           )}
 
           {/* Closing tease line */}
@@ -282,19 +339,24 @@ export function DemoModal({ open, onOpenChange }: DemoModalProps) {
 
           {/* Reveal copy + lead form */}
           {showRevealCopy && !showLeadForm && (
-            <p className="text-sm text-slate-600 text-center px-4 leading-relaxed">
+            <p
+              id="demo-reveal"
+              className="text-sm text-slate-600 text-center px-4 leading-relaxed"
+            >
               You just experienced an AI-powered practice session — emotional pushback,
               real-time coaching, and an improved version of your own words.
             </p>
           )}
           {showLeadForm && (
-            <DemoLeadForm
-              onSuccess={() => playback.submitSucceeded()}
-              onSubmittingChange={(submitting) => {
-                if (submitting) playback.submit();
-                else if (playback.phase === "submitting") playback.submitFailed();
-              }}
-            />
+            <div id="demo-form">
+              <DemoLeadForm
+                onSuccess={() => playback.submitSucceeded()}
+                onSubmittingChange={(submitting) => {
+                  if (submitting) playback.submit();
+                  else if (playback.phase === "submitting") playback.submitFailed();
+                }}
+              />
+            </div>
           )}
         </div>
 
