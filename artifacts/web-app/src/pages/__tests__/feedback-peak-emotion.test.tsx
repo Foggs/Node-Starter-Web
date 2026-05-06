@@ -23,7 +23,7 @@ beforeAll(() => {
   }
 });
 
-import { EmotionArcChart } from "../feedback";
+import { EmotionArcChart } from "../../components/EmotionArcChart";
 
 describe("EmotionArcChart — peak emotion annotation (Y6)", () => {
   it("renders a red peak marker when the peak is in the distressed band (>7)", () => {
