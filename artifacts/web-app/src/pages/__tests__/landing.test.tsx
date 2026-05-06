@@ -1,7 +1,14 @@
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
+
+// Stub the generated lead-capture mutation so DemoModal can mount without a
+// QueryClientProvider in this isolated test.
+vi.mock("@workspace/api-client-react", () => ({
+  useCreateLead: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
 import Landing from "../landing";
 
 function renderAt(path: string) {
@@ -47,5 +54,15 @@ describe("Landing page", () => {
     renderAt("/");
     const link = screen.getByRole("link", { name: /past sessions/i });
     expect(link).toHaveAttribute("href", "/history");
+  });
+
+  it("opens the DemoModal when the secondary CTA is clicked", () => {
+    renderAt("/");
+    expect(screen.queryByTestId("demo-title-card")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("see-how-it-works-cta"));
+
+    // Title card is the first thing rendered by the modal.
+    expect(screen.getByTestId("demo-title-card")).toBeInTheDocument();
   });
 });
