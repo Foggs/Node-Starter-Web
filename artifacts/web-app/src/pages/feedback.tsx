@@ -25,6 +25,8 @@ import {
   AlertTriangle,
   ChevronRight,
   Mic2,
+  Play,
+  Volume2,
 } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { Button } from "@/components/ui/button";
@@ -43,6 +45,8 @@ import {
   useImprovedReplay,
   type ImprovedReplayStatus,
 } from "@/hooks/useImprovedReplay";
+import { useAudioPlayer } from "@/hooks/useAudioPlayer";
+import type { ImprovedTurn } from "@workspace/api-client-react";
 
 // ─── emotion arc chart ────────────────────────────────────────────────────────
 
@@ -396,63 +400,163 @@ function FeedbackSkeleton() {
 
 // ─── loaded feedback panel ────────────────────────────────────────────────────
 
-function ReplayPreparationStatus({
+// ─── inline improved voice preview (Y10) ──────────────────────────────────────
+
+/**
+ * Inline preview card on the feedback page that autoplays the first improved
+ * manager turn the moment the shared `useImprovedReplay()` cache transitions
+ * to `success` (Y10). Autoplay fires exactly once per page mount; if the
+ * browser blocks the initial `play()` (no user gesture yet), the card
+ * degrades to a "Play preview" button instead of erroring.
+ */
+function ImprovedVoicePreview({
   status,
+  data,
   onRetry,
+  onNavigateReplay,
 }: {
   status: ImprovedReplayStatus;
+  data: ImprovedTurn[] | undefined;
   onRetry: () => void;
+  onNavigateReplay: () => void;
 }) {
-  if (status === "idle") return null;
+  const player = useAudioPlayer();
+  const firstTurn = data?.[0];
+  const audioUrl = firstTurn?.audioUrl;
 
-  if (status === "pending") {
-    return (
-      <div
-        className="inline-flex items-center gap-2 text-xs text-slate-500"
-        role="status"
-        aria-live="polite"
-        data-testid="replay-status-pending"
-      >
-        <Loader2 className="w-3.5 h-3.5 animate-spin" aria-hidden="true" />
-        Preparing your replay…
-      </div>
-    );
+  // Guard: ensures we only kick off the auto `play()` a single time per
+  // mount. The flag is set the moment the autoplay attempt is dispatched
+  // (regardless of whether the browser accepts it) so subsequent re-renders
+  // never restart playback. A new practice session unmounts/remounts this
+  // page, naturally re-arming the guard.
+  const hasAutoplayedRef = useRef(false);
+  // Tracks whether the *initial* autoplay attempt was rejected by the
+  // browser's user-gesture policy. When true we render a "Play preview"
+  // button in place of the playing pill.
+  const [needsFallback, setNeedsFallback] = useState(false);
+
+  useEffect(() => {
+    if (status !== "success") return;
+    if (hasAutoplayedRef.current) return;
+    if (!audioUrl) return;
+    hasAutoplayedRef.current = true;
+    player.play(audioUrl);
+    // player.play is referentially stable; we deliberately depend only on
+    // the trigger inputs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, audioUrl]);
+
+  useEffect(() => {
+    if (
+      player.playbackState === "error" &&
+      hasAutoplayedRef.current &&
+      audioUrl
+    ) {
+      setNeedsFallback(true);
+    }
+    if (player.playbackState === "playing") {
+      setNeedsFallback(false);
+    }
+  }, [player.playbackState, audioUrl]);
+
+  function handlePlayFallback() {
+    if (!audioUrl) return;
+    setNeedsFallback(false);
+    player.play(audioUrl);
   }
 
-  if (status === "success") {
-    return (
-      <div
-        className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700"
-        role="status"
-        aria-live="polite"
-        data-testid="replay-status-ready"
-      >
-        <CheckCircle2 className="w-3.5 h-3.5" aria-hidden="true" />
-        Replay ready
-      </div>
-    );
-  }
-
-  // error
   return (
-    <div
-      className="inline-flex items-center gap-2 text-xs text-amber-700"
-      role="status"
-      aria-live="polite"
-      data-testid="replay-status-error"
-    >
-      <AlertTriangle className="w-3.5 h-3.5" aria-hidden="true" />
-      <span>Couldn't prepare your replay.</span>
-      <Button
-        size="sm"
-        variant="ghost"
-        className="h-6 px-2 text-amber-700"
-        onClick={onRetry}
-      >
-        <RefreshCw className="w-3 h-3 mr-1" aria-hidden="true" />
-        Retry
-      </Button>
-    </div>
+    <Card className="border-emerald-200 bg-emerald-50/40">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-sm font-semibold text-emerald-700 flex items-center gap-2">
+          <Mic2 className="w-4 h-4 text-emerald-500" />
+          Improved voice preview
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {status === "pending" && (
+          <div
+            className="inline-flex items-center gap-2 text-sm text-slate-600"
+            role="status"
+            aria-live="polite"
+            data-testid="improved-preview-pending"
+          >
+            <Loader2 className="w-4 h-4 animate-spin text-emerald-500" aria-hidden="true" />
+            Preparing your improved voice…
+          </div>
+        )}
+
+        {status === "error" && (
+          <div
+            className="inline-flex items-center gap-2 text-sm text-amber-700"
+            role="status"
+            aria-live="polite"
+            data-testid="improved-preview-error"
+          >
+            <AlertTriangle className="w-4 h-4" aria-hidden="true" />
+            <span>Couldn't prepare your replay.</span>
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-7 px-2 text-amber-700"
+              onClick={onRetry}
+            >
+              <RefreshCw className="w-3.5 h-3.5 mr-1" aria-hidden="true" />
+              Retry
+            </Button>
+          </div>
+        )}
+
+        {status === "success" && firstTurn && (
+          <div className="space-y-3" data-testid="improved-preview-success">
+            <div className="rounded-lg border border-emerald-200 bg-white/70 p-3">
+              <p className="text-xs font-semibold text-emerald-600 uppercase tracking-wide mb-1.5">
+                Turn {firstTurn.turnIndex} — improved
+              </p>
+              <p className="text-sm text-slate-700 leading-relaxed">
+                {firstTurn.improvedTranscript}
+              </p>
+              <div
+                className="mt-2 min-h-[1.5rem] flex items-center"
+                role="status"
+                aria-live="polite"
+              >
+                {player.playbackState === "playing" && (
+                  <span
+                    className="inline-flex items-center gap-1 text-xs font-medium text-emerald-700"
+                    data-testid="improved-preview-playing"
+                  >
+                    <Volume2 className="w-3.5 h-3.5 animate-pulse" aria-hidden="true" />
+                    Playing…
+                  </span>
+                )}
+                {needsFallback && audioUrl && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5 text-xs text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+                    onClick={handlePlayFallback}
+                    data-testid="improved-preview-play-fallback"
+                  >
+                    <Play className="w-3.5 h-3.5" aria-hidden="true" />
+                    Play preview
+                  </Button>
+                )}
+              </div>
+            </div>
+            <Button
+              variant="outline"
+              className="gap-2 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
+              onClick={onNavigateReplay}
+              data-testid="improved-preview-cta"
+            >
+              Hear the full replay
+              <ArrowRight className="w-4 h-4" aria-hidden="true" />
+            </Button>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -466,6 +570,7 @@ function FeedbackPanel({
   exportSuccess,
   onDismissExportError,
   replayStatus,
+  replayData,
   onReplayRetry,
 }: {
   feedback: FeedbackSummary;
@@ -477,6 +582,7 @@ function FeedbackPanel({
   exportSuccess?: boolean;
   onDismissExportError?: () => void;
   replayStatus: ImprovedReplayStatus;
+  replayData: ImprovedTurn[] | undefined;
   onReplayRetry: () => void;
 }) {
   const [, navigate] = useLocation();
@@ -569,6 +675,14 @@ function FeedbackPanel({
       {/* Per-turn coaching recap from session */}
       <CoachingRecap turns={turns} />
 
+      {/* Inline improved-voice preview (Y10) */}
+      <ImprovedVoicePreview
+        status={replayStatus}
+        data={replayData}
+        onRetry={onReplayRetry}
+        onNavigateReplay={onReplay}
+      />
+
       {/* Export error */}
       {exportError && (
         <Card className="border-red-200 bg-red-50">
@@ -645,20 +759,6 @@ function FeedbackPanel({
             Report downloaded
           </span>
         )}
-        <div className="flex flex-col gap-1.5">
-          <Button
-            variant="outline"
-            className="gap-2 text-emerald-700 border-emerald-300 hover:bg-emerald-50"
-            onClick={onReplay}
-          >
-            <Mic2 className="w-4 h-4" />
-            View improved replay
-          </Button>
-          <ReplayPreparationStatus
-            status={replayStatus}
-            onRetry={onReplayRetry}
-          />
-        </div>
         <div className="flex-1" />
         <Button
           className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold gap-2"
@@ -935,6 +1035,7 @@ export default function Feedback() {
             exportSuccess={exportSuccess}
             onDismissExportError={dismissExportError}
             replayStatus={improvedReplay.status}
+            replayData={improvedReplay.data}
             onReplayRetry={handleReplayRetry}
           />
         )}

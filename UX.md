@@ -69,11 +69,12 @@
   Stop button enabled only after 15s minimum to prevent accidental ultra-short recordings.  
   *Acceptance:* a first-time user without reading any instructions understands how long to record.
 
-- [ ] **Y10 — Autoplay first improved turn inline on feedback page**  
+- [x] **Y10 — Autoplay first improved turn inline on feedback page**  
   Do not require navigation to `/replay` to hear the improved voice.  
   After `POST /api/improved-replay` completes, autoplay the first improved manager turn inline on the feedback page as an audio preview.  
   Show a "Hear the full replay →" CTA below it to navigate to `/replay`.  
-  *Acceptance:* the emotional payoff of hearing your improved voice occurs on the feedback page, not behind a navigation step.
+  *Acceptance:* the emotional payoff of hearing your improved voice occurs on the feedback page, not behind a navigation step.  
+  *Verified:* May 2026 — `feedback.tsx` renders an inline `ImprovedVoicePreview` card that auto-fires `useAudioPlayer().play(data[0].audioUrl)` exactly once when `useImprovedReplay()` reaches `success`, with a `Volume2` "Playing…" pill, a "Play preview" fallback when the browser blocks autoplay, and a "Hear the full replay →" CTA to `/replay`; covered by `feedback-inline-autoplay.test.tsx` (5 cases).
 
 ---
 
