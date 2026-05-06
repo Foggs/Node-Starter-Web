@@ -217,7 +217,7 @@ export function DemoModal({ open, onOpenChange }: DemoModalProps) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto p-0 [&>button]:hidden">
+      <DialogContent className="sm:max-w-2xl min-h-[600px] max-h-[90vh] overflow-y-auto p-0 [&>button]:hidden">
         <DialogTitle className="sr-only">Exit Coach demo</DialogTitle>
         <DialogDescription className="sr-only">
           A scripted preview of an Exit Coach practice session.
