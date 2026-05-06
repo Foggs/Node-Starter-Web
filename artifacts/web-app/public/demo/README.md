@@ -16,12 +16,27 @@ with real ElevenLabs-generated audio.
 
 ## Regenerating the audio
 
-1. Run each transcript from `src/data/demoScript.ts` through ElevenLabs TTS
-   with the voice + stability settings above.
-2. Save each output as MP3 to its path here, replacing the placeholder.
-3. Update `manifest.json` `expectedDurationMs` values to match the real
-   duration in milliseconds. `useDemoPlayback` reads these for timer math
-   so its phase transitions stay aligned with the audio.
+A one-shot script handles steps 1–2:
+
+```bash
+ELEVENLABS_API_KEY=sk-... pnpm --filter @workspace/scripts run gen:demo-audio
+```
+
+Source: [scripts/src/generate-demo-audio.ts](../../../../scripts/src/generate-demo-audio.ts).
+The script holds the canonical transcripts (mirrored from
+`artifacts/web-app/src/data/demoScript.ts`) and the spec voice + stability
+settings, calls ElevenLabs `/v1/text-to-speech`, and overwrites the four
+files in this directory.
+
+Then update durations:
+
+```bash
+for f in *.mp3; do echo "$f: $(ffprobe -v error -show_entries format=duration -of csv=p=0 "$f")"; done
+```
+
+Plug the durations (×1000, ms) into `manifest.json` `expectedDurationMs`.
+`useDemoPlayback` reads them for timer math so phase transitions stay
+aligned with the audio.
 
 ## Why placeholders are committed
 
