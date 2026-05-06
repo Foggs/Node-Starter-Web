@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useId } from "react";
 import { useLocation } from "wouter";
 import { ApiError, generateFeedbackSummary } from "@workspace/api-client-react";
 import { isAbortError } from "@/lib/apiErrors";
@@ -74,11 +74,14 @@ export function EmotionArcChart({ emotionArc }: { emotionArc: number[] }) {
         ? "increased"
         : "stayed roughly steady";
 
-  // Y6 — peak annotation. First-occurrence tie-break via indexOf. Only annotate
-  // when there are 2+ turns AND the peak crossed out of the calm band — a
-  // single-turn session has nothing to compare against, and a calm-band peak
-  // doesn't need to be visually distinguished from the regular line dots.
-  const peakIndex = emotionArc.length > 1 ? emotionArc.indexOf(peak) : -1;
+  // Y6 — peak annotation. First-occurrence tie-break via indexOf. We always
+  // know which turn the peak landed on (used for the SR summary), but the
+  // visible marker is only rendered when there are 2+ turns AND the peak
+  // crossed out of the calm band — a single-turn session has nothing to
+  // compare against, and a calm-band peak doesn't need to be visually
+  // distinguished from the regular line dots.
+  const peakIndexAbsolute = emotionArc.length > 0 ? emotionArc.indexOf(peak) : -1;
+  const peakIndex = emotionArc.length > 1 ? peakIndexAbsolute : -1;
   const peakBand: "calm" | "unsettled" | "distressed" =
     peak > 7 ? "distressed" : peak >= 4 ? "unsettled" : "calm";
   const showPeakMarker = peakIndex >= 0 && peakBand !== "calm";
@@ -88,9 +91,20 @@ export function EmotionArcChart({ emotionArc }: { emotionArc: number[] }) {
     ? `Your tone at turn ${peakTurnNumber} escalated the conversation — see coaching tip below.`
     : null;
 
-  const peakSummary = showPeakMarker
-    ? ` Peak ${peak} occurred at turn ${peakTurnNumber}.`
-    : "";
+  // SR summary always names the peak turn whenever there is at least one
+  // turn — even for calm-band or single-turn sessions, where the visible
+  // marker is intentionally suppressed.
+  const peakSummary =
+    peakIndexAbsolute >= 0
+      ? ` Peak ${peak} occurred at turn ${peakIndexAbsolute + 1}.`
+      : "";
+
+  // Focus-driven tooltip: when a keyboard user tabs onto the peak marker we
+  // surface the Y6 guidance text in a visible inline panel above the chart so
+  // they get the same insight as a mouse-hover user (the SVG <title> only
+  // renders on hover in browsers). Hidden again on blur.
+  const [peakFocused, setPeakFocused] = useState(false);
+  const peakFocusPanelId = useId();
 
   const turnSummary = emotionArc
     .map(
@@ -107,6 +121,21 @@ export function EmotionArcChart({ emotionArc }: { emotionArc: number[] }) {
       aria-label={`Emotion arc chart. ${summary}`}
     >
       <p className="sr-only">{summary}</p>
+      {peakTooltipText && (
+        <div
+          id={peakFocusPanelId}
+          role="status"
+          aria-live="polite"
+          data-testid="peak-focus-panel"
+          className={`mb-2 rounded-md border px-3 py-2 text-xs leading-relaxed transition-opacity ${
+            peakBand === "distressed"
+              ? "border-red-200 bg-red-50 text-red-800"
+              : "border-amber-200 bg-amber-50 text-amber-800"
+          } ${peakFocused ? "opacity-100" : "opacity-0 pointer-events-none h-0 m-0 p-0 border-0 overflow-hidden"}`}
+        >
+          {peakFocused ? peakTooltipText : ""}
+        </div>
+      )}
       <div className="flex items-center justify-between mb-3">
         <p className="text-xs text-slate-500">
           Employee emotional intensity across your turns
@@ -194,8 +223,13 @@ export function EmotionArcChart({ emotionArc }: { emotionArc: number[] }) {
                     tabIndex={0}
                     role="img"
                     aria-label={peakTooltipText ?? undefined}
+                    aria-describedby={peakFocusPanelId}
                     data-testid="peak-marker"
                     style={{ outline: "none" }}
+                    onFocus={() => setPeakFocused(true)}
+                    onBlur={() => setPeakFocused(false)}
+                    onMouseEnter={() => setPeakFocused(true)}
+                    onMouseLeave={() => setPeakFocused(false)}
                   >
                     <circle
                       cx={cx}

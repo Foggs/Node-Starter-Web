@@ -1,6 +1,6 @@
 import React from "react";
 import { describe, it, expect, vi, beforeAll } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { render, screen, act, fireEvent } from "@testing-library/react";
 
 vi.mock("recharts", async () => {
   const actual = await vi.importActual<typeof import("recharts")>("recharts");
@@ -96,11 +96,51 @@ describe("EmotionArcChart — peak emotion annotation (Y6)", () => {
     );
   });
 
-  it("omits the peak-turn note from the summary when the peak is in the calm band", () => {
+  it("still names the peak turn in the SR summary when the peak is in the calm band", () => {
+    // The visible peak marker is suppressed for calm-band peaks, but
+    // assistive-tech users should still hear which turn the peak occurred on
+    // so they get the same insight as sighted users (Y6 a11y requirement).
     const { container } = render(
       <EmotionArcChart emotionArc={[1, 2, 3, 2]} />,
     );
     const srSummary = container.querySelector(".sr-only");
-    expect(srSummary?.textContent).not.toMatch(/occurred at turn/);
+    expect(srSummary?.textContent).toMatch(/Peak 3 occurred at turn 3\./);
+    // No visible peak marker for calm-band sessions.
+    expect(screen.queryByTestId("peak-marker")).not.toBeInTheDocument();
+  });
+
+  it("still names the peak turn in the SR summary for a single-turn session", () => {
+    const { container } = render(<EmotionArcChart emotionArc={[9]} />);
+    const srSummary = container.querySelector(".sr-only");
+    expect(srSummary?.textContent).toMatch(/Peak 9 occurred at turn 1\./);
+  });
+
+  it("reveals the Y6 guidance text in a visible focus panel when the peak marker receives focus", () => {
+    render(<EmotionArcChart emotionArc={[3, 5, 9, 4]} />);
+    const marker = screen.getByTestId("peak-marker");
+    const panel = screen.getByTestId("peak-focus-panel");
+
+    // Hidden by default — opacity-0 + empty text content so sighted users
+    // don't see anything until they focus / hover the marker.
+    expect(panel).toHaveClass("opacity-0");
+    expect(panel.textContent).toBe("");
+
+    act(() => {
+      marker.focus();
+      fireEvent.focus(marker);
+    });
+    expect(panel).toHaveClass("opacity-100");
+    expect(panel.textContent).toMatch(
+      /Your tone at turn 3 escalated the conversation/,
+    );
+    // The marker is wired up via aria-describedby to this same panel so
+    // screen readers announce the guidance text on focus.
+    expect(marker.getAttribute("aria-describedby")).toBe(panel.getAttribute("id"));
+
+    act(() => {
+      fireEvent.blur(marker);
+    });
+    expect(panel).toHaveClass("opacity-0");
+    expect(panel.textContent).toBe("");
   });
 });
