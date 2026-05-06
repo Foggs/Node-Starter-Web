@@ -226,6 +226,15 @@ export function DemoModal({ open, onOpenChange }: DemoModalProps) {
         {/* Hidden conversation-turn audio player */}
         <audio ref={audioRef} preload="auto" />
 
+        {/* Brand header — sits at the top and scrolls away with the modal body */}
+        <div className="flex items-center justify-center px-6 pt-6 pb-4">
+          <img
+            src="/exit-coach-logo.png"
+            alt="Exit Coach"
+            className="h-[170px] sm:h-[200px] w-auto"
+          />
+        </div>
+
         {/* Top-right close — Radix Dialog wires Escape automatically */}
         <button
           aria-label="Close demo"
@@ -235,10 +244,10 @@ export function DemoModal({ open, onOpenChange }: DemoModalProps) {
           <X className="w-5 h-5" />
         </button>
 
-        {/* Title card overlay — covers everything until the user clicks Continue */}
+        {/* Title card overlay — covers everything below the logo until the user clicks Continue */}
         {showTitleCard && (
           <div
-            className="absolute inset-0 z-40 flex items-center justify-center bg-white text-center p-8"
+            className="absolute inset-x-0 bottom-0 top-[210px] sm:top-[240px] z-40 flex items-center justify-center bg-white text-center p-8"
             data-testid="demo-title-card"
           >
             <div className="max-w-md">
