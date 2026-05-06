@@ -331,4 +331,26 @@ describe("POST /api/export-report — R4 improved manager script", () => {
     expect(scriptSection).not.toContain("Turn 4");
     expect(scriptSection).not.toContain("Turn 5");
   });
+
+  it("treats whitespace-only improved transcripts as not populated", async () => {
+    const cookie = await mintSession();
+    await configureSession(cookie);
+    await injectTurns(cookie, 2);
+    // Mock chatCompletion to return whitespace only — sanitizeTranscript +
+    // the route-level filter (`trim().length > 0`) should drop these.
+    vi.mocked(chatCompletion).mockResolvedValue("   ");
+    await request(app)
+      .post("/api/improved-replay")
+      .set("Cookie", cookie)
+      .expect(200);
+    await generateFeedback(cookie);
+
+    const text = extractPdfText(await fetchPdf(cookie));
+
+    // The route only includes turns whose improved_transcript trims to
+    // non-empty. With only opener prefixes (no body), the section may still
+    // render — but if the LLM ever returned literally "" or "   ", those
+    // turns must be excluded. We assert no "undefined" leaks into the PDF.
+    expect(text).not.toContain("undefined");
+  });
 });

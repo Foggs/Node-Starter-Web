@@ -24,11 +24,12 @@
   *Acceptance:* navigating directly to `/replay` never shows an empty or permanently loading state.  
   *Verified May 2026:* shared `useImprovedReplay` hook backs `session.tsx` (eager fire on `complete` before `navigate("/feedback")`), `feedback.tsx` (inline pending/ready/error indicator with Retry next to "View improved replay"), and `replay.tsx` (cached read with no duplicate request). New unit tests in `session-eager-replay.test.tsx` and `replay-shared-cache.test.tsx` cover eager fire, cache reuse, and cold deep-link fallback.
 
-- [ ] **R4 — Include improved manager script in PDF export**  
+- [x] **R4 — Include improved manager script in PDF export**  
   Add the LLM-rewritten manager turns to the `POST /api/export-report` pdfkit output.  
   These are AI-generated suggested language — not employee PII — and are safe to include.  
   Layout: one section per turn, labelled "Your words" (original) and "Suggested phrasing" (improved).  
-  *Acceptance:* a recipient who has never seen the app can read the PDF and understand what the manager said and how it could be improved, with no identifying information present.
+  *Acceptance:* a recipient who has never seen the app can read the PDF and understand what the manager said and how it could be improved, with no identifying information present.  
+  *Verified May 2026:* `POST /api/export-report` (`artifacts/api-server/src/routes/report.ts`) now renders a "Manager Script — Your Words vs Suggested Phrasing" section between Areas for Improvement and the footer. The section iterates manager turns in `turn_index` order and only includes turns where `improved_transcript` is a non-empty string — sessions with no improved-replay output omit the section entirely (no empty headings, no "undefined"). Each entry uses the existing `SLATE_900`/`SLATE_600`/`AMBER` palette and Helvetica/Helvetica-Bold pair, with `width`-bounded `text()` calls so long turns wrap and trigger pdfkit auto-pagination instead of crashing into the footer. The export remains a synchronous read of `req.session` — no LLM calls, no network. Covered by `exportReport.test.ts` (all-populated → every "Turn N" + "Suggested phrasing" + improved body present; none-populated → no "Manager Script" heading; mixed coverage → only turns with `improved_transcript` appear, scoped to the slice after the heading because the score table renders "Turn N" for every turn regardless).
 
 ---
 
@@ -95,7 +96,7 @@ These areas are well-implemented and should not be changed without a specific re
 | 1 | R1 — Employee voice timeout | Low | User stuck on blank screen |
 | 2 | R3 — Replay triggered on completion | Low | Empty replay page on direct nav |
 | 3 | R2 — Recovery banner blocking modal | Medium | Session state corruption |
-| 4 | R4 — Improved script in PDF | Medium | PDF not worth sharing |
+| 4 | ~~R4 — Improved script in PDF~~ ✅ done | Medium | PDF not worth sharing |
 | 5 | ~~Y7 — Recording countdown~~ ✅ done | Low | Clipped audio, poor clone quality |
 | 6 | Y9 — Recording duration guidance | Low | Users under-record, poor clone |
 | 7 | Y5 — Processing state messages | Low | Wait feels broken |

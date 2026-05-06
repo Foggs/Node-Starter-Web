@@ -282,7 +282,13 @@ router.post("/export-report", sessionGuard, (req, res) => {
   }
 
   // ── footer ────────────────────────────────────────────────────────────────
+  // Guard against overlap: if remaining page space is too small for the
+  // footer band (the Manager Script section can push content low on the
+  // last page), start a fresh page so the footer never collides with body.
   const footerY = doc.page.height - 60;
+  if (doc.y > footerY - 20) {
+    doc.addPage();
+  }
   doc
     .fontSize(8)
     .fillColor(SLATE_600)
