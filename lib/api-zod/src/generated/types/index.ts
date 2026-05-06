@@ -17,6 +17,8 @@ export * from "./errorResponse";
 export * from "./feedbackSummary";
 export * from "./healthStatus";
 export * from "./improvedTurn";
+export * from "./leadRequest";
+export * from "./leadResponse";
 export * from "./persona";
 export * from "./personaId";
 export * from "./ping200";

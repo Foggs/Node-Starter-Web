@@ -30,6 +30,8 @@ import type {
   FeedbackSummary,
   HealthStatus,
   ImprovedTurn,
+  LeadRequest,
+  LeadResponse,
   Persona,
   Ping200,
   Scenario,
@@ -187,6 +189,100 @@ export function usePing<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Public endpoint — no session cookie required. The express-session
+middleware mints a session cookie on the response so the caller can
+navigate straight into POST /api/consent next.
+
+Duplicate emails are silently de-duplicated (still 201) and skip the
+Sheets append. All Sheets errors map to a generic 500 with no detail
+leak. Per-IP rate limit: 5 requests per hour.
+
+ * @summary Capture a lead from the landing-page demo modal
+ */
+export const getCreateLeadUrl = () => {
+  return `/api/leads`;
+};
+
+export const createLead = async (
+  leadRequest: LeadRequest,
+  options?: RequestInit,
+): Promise<LeadResponse> => {
+  return customFetch<LeadResponse>(getCreateLeadUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(leadRequest),
+  });
+};
+
+export const getCreateLeadMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createLead>>,
+    TError,
+    { data: BodyType<LeadRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createLead>>,
+  TError,
+  { data: BodyType<LeadRequest> },
+  TContext
+> => {
+  const mutationKey = ["createLead"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createLead>>,
+    { data: BodyType<LeadRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createLead(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateLeadMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createLead>>
+>;
+export type CreateLeadMutationBody = BodyType<LeadRequest>;
+export type CreateLeadMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Capture a lead from the landing-page demo modal
+ */
+export const useCreateLead = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createLead>>,
+    TError,
+    { data: BodyType<LeadRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createLead>>,
+  TError,
+  { data: BodyType<LeadRequest> },
+  TContext
+> => {
+  return useMutation(getCreateLeadMutationOptions(options));
+};
 
 /**
  * Returns the 4 built-in practice scenarios. No session required.

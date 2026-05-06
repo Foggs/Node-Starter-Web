@@ -24,6 +24,37 @@ export const PingResponse = zod.object({
 });
 
 /**
+ * Public endpoint — no session cookie required. The express-session
+middleware mints a session cookie on the response so the caller can
+navigate straight into POST /api/consent next.
+
+Duplicate emails are silently de-duplicated (still 201) and skip the
+Sheets append. All Sheets errors map to a generic 500 with no detail
+leak. Per-IP rate limit: 5 requests per hour.
+
+ * @summary Capture a lead from the landing-page demo modal
+ */
+export const createLeadBodyNameMin = 2;
+export const createLeadBodyNameMax = 100;
+
+export const createLeadBodyEmailMax = 254;
+
+export const CreateLeadBody = zod
+  .object({
+    name: zod
+      .string()
+      .min(createLeadBodyNameMin)
+      .max(createLeadBodyNameMax)
+      .describe("Visitor's full name (will be trimmed)"),
+    email: zod
+      .string()
+      .email()
+      .max(createLeadBodyEmailMax)
+      .describe("Visitor's email address (will be lowercased)"),
+  })
+  .describe("Lead capture from the landing-page demo modal");
+
+/**
  * Returns the 4 built-in practice scenarios. No session required.
  * @summary List all practice scenarios
  */

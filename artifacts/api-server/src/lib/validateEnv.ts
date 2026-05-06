@@ -2,6 +2,8 @@ const REQUIRED_VARS = [
   "ELEVENLABS_API_KEY",
   "OPENAI_API_KEY",
   "ELEVENLABS_AGENT_ID",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "LEADS_SHEET_ID",
 ] as const;
 
 export function validateEnv(): void {

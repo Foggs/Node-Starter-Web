@@ -7,6 +7,13 @@ import { sessionMiddleware } from "./middlewares/session.js";
 
 const app: Express = express();
 
+// Replit (and any reverse-proxied deploy) terminates TLS upstream and forwards
+// the request to Node over HTTP with `X-Forwarded-Proto: https`. Without this,
+// Express treats every request as HTTP and `express-session` refuses to emit
+// Secure cookies in production, breaking every session-dependent route.
+// `1` = trust exactly one upstream hop; `true` would be a header-spoof risk.
+app.set("trust proxy", 1);
+
 app.use(
   pinoHttp({
     logger,

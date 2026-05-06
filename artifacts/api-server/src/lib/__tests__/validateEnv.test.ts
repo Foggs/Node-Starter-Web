@@ -2,7 +2,21 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 
 import { validateEnv } from "../validateEnv.js";
 
-const REQUIRED_VARS = ["ELEVENLABS_API_KEY", "OPENAI_API_KEY", "ELEVENLABS_AGENT_ID"];
+const REQUIRED_VARS = [
+  "ELEVENLABS_API_KEY",
+  "OPENAI_API_KEY",
+  "ELEVENLABS_AGENT_ID",
+  "GOOGLE_SERVICE_ACCOUNT_JSON",
+  "LEADS_SHEET_ID",
+];
+
+const VALID_ENV = {
+  ELEVENLABS_API_KEY: "el-key",
+  OPENAI_API_KEY: "oai-key",
+  ELEVENLABS_AGENT_ID: "agent-id",
+  GOOGLE_SERVICE_ACCOUNT_JSON: '{"client_email":"x@y.iam.gserviceaccount.com"}',
+  LEADS_SHEET_ID: "sheet-id",
+};
 
 const ALL_KEYS = [...REQUIRED_VARS, "NODE_ENV"] as const;
 
@@ -48,74 +62,53 @@ describe("validateEnv", () => {
   });
 
   it("does not exit when all required env vars are present", () => {
-    withEnv(
-      {
-        ELEVENLABS_API_KEY: "el-key",
-        OPENAI_API_KEY: "oai-key",
-        ELEVENLABS_AGENT_ID: "agent-id",
-      },
-      () => {
-        validateEnv();
-        expect(exitSpy).not.toHaveBeenCalled();
-      },
-    );
+    withEnv(VALID_ENV, () => {
+      validateEnv();
+      expect(exitSpy).not.toHaveBeenCalled();
+    });
   });
 
   it("calls process.exit(1) when ELEVENLABS_API_KEY is missing", () => {
-    withEnv(
-      {
-        ELEVENLABS_API_KEY: undefined,
-        OPENAI_API_KEY: "oai-key",
-        ELEVENLABS_AGENT_ID: "agent-id",
-      },
-      () => {
-        validateEnv();
-        expect(exitSpy).toHaveBeenCalledWith(1);
-      },
-    );
+    withEnv({ ...VALID_ENV, ELEVENLABS_API_KEY: undefined }, () => {
+      validateEnv();
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
   });
 
   it("calls process.exit(1) when OPENAI_API_KEY is missing", () => {
-    withEnv(
-      {
-        ELEVENLABS_API_KEY: "el-key",
-        OPENAI_API_KEY: undefined,
-        ELEVENLABS_AGENT_ID: "agent-id",
-      },
-      () => {
-        validateEnv();
-        expect(exitSpy).toHaveBeenCalledWith(1);
-      },
-    );
+    withEnv({ ...VALID_ENV, OPENAI_API_KEY: undefined }, () => {
+      validateEnv();
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
   });
 
   it("calls process.exit(1) when ELEVENLABS_AGENT_ID is missing", () => {
-    withEnv(
-      {
-        ELEVENLABS_API_KEY: "el-key",
-        OPENAI_API_KEY: "oai-key",
-        ELEVENLABS_AGENT_ID: undefined,
-      },
-      () => {
-        validateEnv();
-        expect(exitSpy).toHaveBeenCalledWith(1);
-      },
-    );
+    withEnv({ ...VALID_ENV, ELEVENLABS_AGENT_ID: undefined }, () => {
+      validateEnv();
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+  });
+
+  it("calls process.exit(1) when GOOGLE_SERVICE_ACCOUNT_JSON is missing", () => {
+    withEnv({ ...VALID_ENV, GOOGLE_SERVICE_ACCOUNT_JSON: undefined }, () => {
+      validateEnv();
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
+  });
+
+  it("calls process.exit(1) when LEADS_SHEET_ID is missing", () => {
+    withEnv({ ...VALID_ENV, LEADS_SHEET_ID: undefined }, () => {
+      validateEnv();
+      expect(exitSpy).toHaveBeenCalledWith(1);
+    });
   });
 
   it("logs a clear error message naming the missing variable", () => {
-    withEnv(
-      {
-        ELEVENLABS_API_KEY: undefined,
-        OPENAI_API_KEY: "oai-key",
-        ELEVENLABS_AGENT_ID: "agent-id",
-      },
-      () => {
-        validateEnv();
-        const message = errorSpy.mock.calls.flat().join(" ");
-        expect(message).toContain("ELEVENLABS_API_KEY");
-      },
-    );
+    withEnv({ ...VALID_ENV, ELEVENLABS_API_KEY: undefined }, () => {
+      validateEnv();
+      const message = errorSpy.mock.calls.flat().join(" ");
+      expect(message).toContain("ELEVENLABS_API_KEY");
+    });
   });
 
   it("calls process.exit(1) once even when multiple vars are missing", () => {
@@ -124,6 +117,8 @@ describe("validateEnv", () => {
         ELEVENLABS_API_KEY: undefined,
         OPENAI_API_KEY: undefined,
         ELEVENLABS_AGENT_ID: undefined,
+        GOOGLE_SERVICE_ACCOUNT_JSON: undefined,
+        LEADS_SHEET_ID: undefined,
       },
       () => {
         validateEnv();
@@ -140,6 +135,8 @@ describe("validateEnv", () => {
         ELEVENLABS_API_KEY: undefined,
         OPENAI_API_KEY: undefined,
         ELEVENLABS_AGENT_ID: undefined,
+        GOOGLE_SERVICE_ACCOUNT_JSON: undefined,
+        LEADS_SHEET_ID: undefined,
       },
       () => {
         validateEnv();

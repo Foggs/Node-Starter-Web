@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { Link } from "wouter";
-import { ArrowRight, ShieldCheck, Mic, BarChart3, Clock } from "lucide-react";
+import { ShieldCheck, Mic, BarChart3, Clock, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DemoModal } from "@/components/DemoModal";
 
 const FEATURES = [
   {
@@ -33,6 +35,7 @@ const SCENARIOS = [
 ];
 
 export default function Landing() {
+  const [demoOpen, setDemoOpen] = useState(false);
   return (
     <div className="min-h-screen bg-slate-950 text-white flex flex-col page-enter">
       {/* nav */}
@@ -65,21 +68,21 @@ export default function Landing() {
           AI employee personas — before the real meeting.
         </p>
 
-        <div className="mt-10 flex flex-col sm:flex-row gap-4 items-center">
-          <Link href="/consent">
-            <Button
-              size="lg"
-              className="bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-8 gap-2 text-base"
-            >
-              Start Practicing
-              <ArrowRight className="w-4 h-4" />
-            </Button>
-          </Link>
-          <span className="text-sm text-slate-500">
-            No account needed · Sessions expire in 2 hours
-          </span>
-        </div>
+        <Button
+          size="lg"
+          onClick={() => setDemoOpen(true)}
+          data-testid="demo-cta"
+          className="mt-10 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-8 gap-2 text-base"
+        >
+          <Play className="w-4 h-4 fill-current" />
+          Demo
+        </Button>
+        <span className="mt-4 text-sm text-slate-500">
+          No account needed · Sessions expire in 2 hours
+        </span>
       </section>
+
+      <DemoModal open={demoOpen} onOpenChange={setDemoOpen} />
 
       {/* scenario strip */}
       <section className="border-t border-slate-800 px-6 py-8">

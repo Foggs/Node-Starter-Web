@@ -1,7 +1,14 @@
-import { describe, it, expect } from "vitest";
-import { render, screen } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
+import { render, screen, fireEvent } from "@testing-library/react";
 import { Router } from "wouter";
 import { memoryLocation } from "wouter/memory-location";
+
+// Stub the generated lead-capture mutation so DemoModal can mount without a
+// QueryClientProvider in this isolated test.
+vi.mock("@workspace/api-client-react", () => ({
+  useCreateLead: () => ({ mutate: vi.fn(), isPending: false }),
+}));
+
 import Landing from "../landing";
 
 function renderAt(path: string) {
@@ -14,7 +21,7 @@ function renderAt(path: string) {
 }
 
 describe("Landing page", () => {
-  it("renders the hero heading and primary CTA pointing at /consent", () => {
+  it("renders the hero heading and a single Demo CTA", () => {
     renderAt("/");
 
     expect(
@@ -24,9 +31,11 @@ describe("Landing page", () => {
       }),
     ).toBeInTheDocument();
 
-    const cta = screen.getByRole("link", { name: /start practicing/i });
+    const cta = screen.getByTestId("demo-cta");
     expect(cta).toBeInTheDocument();
-    expect(cta).toHaveAttribute("href", "/consent");
+    expect(cta).toHaveTextContent(/demo/i);
+    // No /consent link in the hero — the demo→form flow is the single entry point.
+    expect(screen.queryByRole("link", { name: /start practicing/i })).toBeNull();
   });
 
   it("renders the four feature cards and scenarios", () => {
@@ -47,5 +56,15 @@ describe("Landing page", () => {
     renderAt("/");
     const link = screen.getByRole("link", { name: /past sessions/i });
     expect(link).toHaveAttribute("href", "/history");
+  });
+
+  it("opens the DemoModal when the Demo CTA is clicked", () => {
+    renderAt("/");
+    expect(screen.queryByTestId("demo-title-card")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("demo-cta"));
+
+    // Title card is the first thing rendered by the modal.
+    expect(screen.getByTestId("demo-title-card")).toBeInTheDocument();
   });
 });
