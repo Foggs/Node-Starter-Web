@@ -58,7 +58,7 @@
   The coaching tip must be the dominant visual element in the overlay — the score is supporting data only.  
   *Acceptance:* in a 3-second glance at the coaching tip overlay, a user reads the tip text before noticing the score number.
 
-- [ ] **Y9 — Recording duration guidance on onboarding page**  
+- [x] **Y9 — Recording duration guidance on onboarding page**  
   Show a progress bar during voice recording with two labelled thresholds:  
   - 30s: "Minimum reached ✓"  
   - 60s: "Optimal length ✓"  

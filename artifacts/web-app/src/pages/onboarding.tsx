@@ -31,8 +31,23 @@ type Phase =
   | "fallback"    // cloning failed — generic voice will be used
   | "error";      // unrecoverable (mic denied, network, etc.)
 
-// Minimum seconds before we allow the user to stop without a warning
-const MIN_SECONDS = 10;
+// Hard gate: the Stop button is disabled until the user has been speaking
+// for at least this many seconds. Prevents accidental ultra-short recordings
+// that produce poor voice clones (Y9).
+const MIN_STOP_SECONDS = 15;
+
+// Soft secondary check: once the Stop button is enabled (>= 15s), if the user
+// stops before reaching the Y9 "Minimum reached" threshold (30s) we still
+// surface the existing short-recording warning so they can choose to keep
+// going. The original value (10s) is now superseded by MIN_STOP_SECONDS, so
+// we raise it to 30s to align with the visual threshold on the new progress
+// bar — the warning fires for stops between 15s and 30s.
+const MIN_SECONDS = 30;
+
+// Y9 progress bar fills 0 → OPTIMAL_SECONDS; markers at MIN_SECONDS_THRESHOLD
+// and OPTIMAL_SECONDS show "Minimum reached ✓" / "Optimal length ✓".
+const MIN_SECONDS_THRESHOLD = 30;
+const OPTIMAL_SECONDS = 60;
 
 // ─── helpers ─────────────────────────────────────────────────────────────────
 
@@ -124,6 +139,7 @@ export default function Onboarding() {
   const [phase, setPhase] = useState<Phase>("idle");
   const [seconds, setSeconds] = useState(0);
   const [shortWarning, setShortWarning] = useState(false);
+  const [earlyStopHint, setEarlyStopHint] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [isMicError, setIsMicError] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -255,6 +271,7 @@ export default function Onboarding() {
   const startRecording = useCallback(async () => {
     setPhase("requesting");
     setShortWarning(false);
+    setEarlyStopHint(false);
 
     let stream: MediaStream;
     try {
@@ -297,8 +314,17 @@ export default function Onboarding() {
     setPhase("recording");
     startAmplitudeLoop(stream);
 
+    // Note: the seconds timer (and the Y9 progress bar bound to it) is
+    // started here — *after* MediaRecorder.start() has fired — never during
+    // permission acquisition. If Y7's 3-2-1 countdown is later added to this
+    // page, the countdown must wrap startRecording so this interval still
+    // begins only after the recorder is actually capturing.
     timerRef.current = setInterval(() => {
-      setSeconds((s) => s + 1);
+      setSeconds((s) => {
+        const next = s + 1;
+        if (next >= MIN_STOP_SECONDS) setEarlyStopHint(false);
+        return next;
+      });
     }, 1000);
   }, [runUpload, startAmplitudeLoop, stopAmplitudeLoop]);
 
@@ -306,6 +332,14 @@ export default function Onboarding() {
 
   const stopRecording = useCallback(() => {
     if (!recorderRef.current || recorderRef.current.state !== "recording") return;
+
+    // Hard gate: under MIN_STOP_SECONDS (15s) we never stop. The button
+    // itself is also disabled at this point — this is a defence-in-depth
+    // against keyboard activation slipping past the disabled attribute.
+    if (seconds < MIN_STOP_SECONDS) {
+      setEarlyStopHint(true);
+      return;
+    }
 
     if (seconds < MIN_SECONDS) {
       setShortWarning(true);
@@ -485,14 +519,36 @@ export default function Onboarding() {
                       ? stopRecording
                       : undefined
                 }
+                onMouseEnter={
+                  phase === "recording" && seconds < MIN_STOP_SECONDS
+                    ? () => setEarlyStopHint(true)
+                    : undefined
+                }
+                onFocus={
+                  phase === "recording" && seconds < MIN_STOP_SECONDS
+                    ? () => setEarlyStopHint(true)
+                    : undefined
+                }
                 disabled={
                   phase === "requesting" ||
                   phase === "uploading" ||
                   isTerminal
                 }
+                aria-disabled={
+                  phase === "recording" && seconds < MIN_STOP_SECONDS
+                    ? true
+                    : undefined
+                }
+                title={
+                  phase === "recording" && seconds < MIN_STOP_SECONDS
+                    ? "Keep talking for a few more seconds…"
+                    : undefined
+                }
                 aria-label={
                   phase === "recording"
-                    ? `Stop recording (${formatTime(seconds)} elapsed)`
+                    ? seconds < MIN_STOP_SECONDS
+                      ? `Stop recording — keep talking for a few more seconds (${formatTime(seconds)} elapsed)`
+                      : `Stop recording (${formatTime(seconds)} elapsed)`
                     : phase === "requesting"
                       ? "Requesting microphone access"
                       : phase === "uploading"
@@ -513,6 +569,12 @@ export default function Onboarding() {
                   phase === "requesting" &&
                     "bg-amber-200 text-slate-400 cursor-wait",
                   phase === "recording" &&
+                    seconds < MIN_STOP_SECONDS &&
+                    (hasAmplitude
+                      ? "bg-red-400/70 text-white/80 animate-mic-pulse cursor-not-allowed"
+                      : "bg-red-400/70 text-white/80 animate-mic-pulse-fallback cursor-not-allowed"),
+                  phase === "recording" &&
+                    seconds >= MIN_STOP_SECONDS &&
                     (hasAmplitude
                       ? "bg-red-500 hover:bg-red-400 text-white animate-mic-pulse"
                       : "bg-red-500 hover:bg-red-400 text-white animate-mic-pulse-fallback"),
@@ -595,27 +657,92 @@ export default function Onboarding() {
                 </div>
               )}
 
-              {/* Progress bar towards 30 s (recording only) */}
+              {/* Y9 — Recording duration progress bar (recording only).
+                  Fills 0 → 60s. Amber under 30s, green at/after 30s. Past
+                  60s the bar stays full and green; recording can continue. */}
               {phase === "recording" && (
                 <div className="w-full max-w-xs">
-                  <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div
+                    role="progressbar"
+                    aria-label="Recording duration — aim for 30 to 60 seconds"
+                    aria-valuemin={0}
+                    aria-valuemax={OPTIMAL_SECONDS}
+                    aria-valuenow={Math.min(seconds, OPTIMAL_SECONDS)}
+                    aria-valuetext={
+                      seconds >= OPTIMAL_SECONDS
+                        ? `${formatTime(seconds)} — optimal length reached`
+                        : seconds >= MIN_SECONDS_THRESHOLD
+                          ? `${formatTime(seconds)} — minimum reached, keep going for optimal length`
+                          : `${formatTime(seconds)} of at least ${MIN_SECONDS_THRESHOLD} seconds`
+                    }
+                    className="relative h-2 bg-slate-100 rounded-full overflow-hidden"
+                    data-testid="recording-progress-bar"
+                  >
                     <div
+                      data-testid="recording-progress-fill"
+                      data-state={
+                        seconds >= MIN_SECONDS_THRESHOLD ? "optimal" : "below-min"
+                      }
                       className={cn(
                         "h-full rounded-full transition-all duration-500",
-                        seconds >= 30 ? "bg-green-500" : "bg-amber-400",
+                        seconds >= MIN_SECONDS_THRESHOLD
+                          ? "bg-green-500"
+                          : "bg-amber-400",
                       )}
-                      style={{ width: `${Math.min((seconds / 60) * 100, 100)}%` }}
+                      style={{
+                        width: `${Math.min((seconds / OPTIMAL_SECONDS) * 100, 100)}%`,
+                      }}
+                    />
+                    {/* Tick marks at 30s (50%) and 60s (100%) */}
+                    <span
+                      aria-hidden="true"
+                      className="absolute top-0 bottom-0 w-px bg-slate-300"
+                      style={{ left: "50%" }}
                     />
                   </div>
-                  <div className="flex justify-between text-xs text-slate-400 mt-1">
-                    <span>0:00</span>
-                    <span className={seconds >= 30 ? "text-green-600 font-medium" : ""}>
-                      0:30 min
+                  <div className="relative mt-1 h-4 text-[10px] text-slate-500">
+                    <span
+                      className={cn(
+                        "absolute -translate-x-1/2 whitespace-nowrap font-medium",
+                        seconds >= MIN_SECONDS_THRESHOLD
+                          ? "text-green-600"
+                          : "text-slate-500",
+                      )}
+                      style={{ left: "50%" }}
+                    >
+                      {seconds >= MIN_SECONDS_THRESHOLD
+                        ? "Minimum reached ✓"
+                        : "30s — minimum"}
                     </span>
-                    <span>1:00</span>
+                    <span
+                      className={cn(
+                        "absolute right-0 whitespace-nowrap font-medium",
+                        seconds >= OPTIMAL_SECONDS
+                          ? "text-green-600"
+                          : "text-slate-500",
+                      )}
+                    >
+                      {seconds >= OPTIMAL_SECONDS
+                        ? "Optimal length ✓"
+                        : "60s — optimal"}
+                    </span>
                   </div>
                 </div>
               )}
+
+              {/* Y9 — Early-stop hint when user tries to stop before 15s */}
+              {phase === "recording" &&
+                seconds < MIN_STOP_SECONDS &&
+                earlyStopHint && (
+                  <p
+                    role="status"
+                    aria-live="polite"
+                    data-testid="early-stop-hint"
+                    className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-2 py-1"
+                  >
+                    Keep talking for a few more seconds…
+                  </p>
+                )}
             </div>
 
             {/* Short-recording warning */}
