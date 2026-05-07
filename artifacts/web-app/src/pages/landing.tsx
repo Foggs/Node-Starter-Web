@@ -59,14 +59,19 @@ export default function Landing() {
         </div>
 
         <h1 className="text-5xl sm:text-6xl font-extrabold tracking-tight leading-tight text-white">
-          Practice the conversations{" "}
-          <span className="text-amber-400">no one wants to have.</span>
+          Practice the hardest HR conversations{" "}
+          <span className="text-amber-400">before it happens</span>
         </h1>
+
+        <p className="mt-6 text-lg text-slate-400 max-w-xl">
+          Rehearse terminations, layoffs, and PIPs with a realistic AI employee
+          so you can lead the real conversation with confidence.
+        </p>
 
         <p className="mt-6 text-lg text-slate-400 max-w-xl">
           Exit Coach is a secure, voice-first rehearsal platform where managers
           practise terminations, layoffs, and PIPs against emotionally realistic
-          AI employee personas — before the real meeting.
+          employee personas — before the real meeting.
         </p>
 
         <Button
@@ -76,7 +81,7 @@ export default function Landing() {
           className="mt-10 bg-amber-500 hover:bg-amber-400 text-slate-950 font-semibold px-8 gap-2 text-base"
         >
           <Play className="w-4 h-4 fill-current" />
-          Demo
+          See how it works
         </Button>
         <span className="mt-4 text-sm text-slate-500">
           No account needed · Sessions expire in 2 hours
