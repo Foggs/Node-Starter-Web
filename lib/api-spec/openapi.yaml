@@ -24,6 +24,8 @@ tags:
     description: PDF coaching report generation
   - name: leads
     description: Lead capture from anonymous landing-page visitors
+  - name: contact
+    description: Public contact form submissions from the /contact page
 
 paths:
   /healthz:
@@ -85,6 +87,49 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/LeadResponse"
+        "400":
+          description: Invalid request body
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "429":
+          description: Rate limit exceeded for this IP
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: Internal error (Sheets unreachable or misconfigured)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /contact:
+    post:
+      operationId: submitContact
+      tags: [contact]
+      summary: Submit a contact form enquiry
+      description: |
+        Public endpoint — no session cookie required. Appends a new row to the
+        "Contact" tab of the Exit Coach Google Sheet (Timestamp | Name | Email | Message).
+        Submissions are NOT deduplicated by email — the same person may legitimately
+        submit multiple enquiries over time. All Sheets errors map to a generic 500
+        with no detail leak. Per-IP rate limit: 3 requests per hour.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactRequest"
+      responses:
+        "201":
+          description: Contact submission stored
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactResponse"
         "400":
           description: Invalid request body
           content:
@@ -543,6 +588,39 @@ components:
     LeadResponse:
       type: object
       description: 201 body — true even when the email was a duplicate
+      properties:
+        success:
+          type: boolean
+      required:
+        - success
+
+    ContactRequest:
+      type: object
+      description: Contact form submission from the /contact page
+      properties:
+        name:
+          type: string
+          minLength: 2
+          maxLength: 100
+          description: Sender's full name (will be trimmed)
+        email:
+          type: string
+          format: email
+          maxLength: 254
+          description: Sender's email address (will be lowercased)
+        message:
+          type: string
+          minLength: 10
+          maxLength: 2000
+          description: Free-form enquiry text (will be trimmed)
+      required:
+        - name
+        - email
+        - message
+
+    ContactResponse:
+      type: object
+      description: 201 body — submission stored in the Contact tab
       properties:
         success:
           type: boolean

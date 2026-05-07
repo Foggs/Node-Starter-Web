@@ -41,3 +41,18 @@ export const leadRateLimit = rateLimit({
   legacyHeaders: false,
   message: { error: "Too many requests, please try again later." },
 });
+
+/**
+ * Per-IP limit for the public /api/contact endpoint. Stricter than leads
+ * because each submission carries a free-form message body — 3 per IP per
+ * hour deters automated form-spam while leaving room for a person who
+ * legitimately needs to send a follow-up.
+ */
+export const contactRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 3,
+  keyGenerator: ipKey,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests, please try again later." },
+});
