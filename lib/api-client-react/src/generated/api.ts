@@ -23,6 +23,8 @@ import type {
   CoachingTipResponse,
   ConsentRequest,
   ConsentResponse,
+  ContactRequest,
+  ContactResponse,
   DiscardVoice200,
   EmployeeTurnResponse,
   EmployeeVoiceResponse,
@@ -282,6 +284,98 @@ export const useCreateLead = <
   TContext
 > => {
   return useMutation(getCreateLeadMutationOptions(options));
+};
+
+/**
+ * Public endpoint — no session cookie required. Appends a new row to the
+"Contact" tab of the Exit Coach Google Sheet (Timestamp | Name | Email | Message).
+Submissions are NOT deduplicated by email — the same person may legitimately
+submit multiple enquiries over time. All Sheets errors map to a generic 500
+with no detail leak. Per-IP rate limit: 3 requests per hour.
+
+ * @summary Submit a contact form enquiry
+ */
+export const getSubmitContactUrl = () => {
+  return `/api/contact`;
+};
+
+export const submitContact = async (
+  contactRequest: ContactRequest,
+  options?: RequestInit,
+): Promise<ContactResponse> => {
+  return customFetch<ContactResponse>(getSubmitContactUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(contactRequest),
+  });
+};
+
+export const getSubmitContactMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitContact>>,
+    TError,
+    { data: BodyType<ContactRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof submitContact>>,
+  TError,
+  { data: BodyType<ContactRequest> },
+  TContext
+> => {
+  const mutationKey = ["submitContact"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof submitContact>>,
+    { data: BodyType<ContactRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return submitContact(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SubmitContactMutationResult = NonNullable<
+  Awaited<ReturnType<typeof submitContact>>
+>;
+export type SubmitContactMutationBody = BodyType<ContactRequest>;
+export type SubmitContactMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Submit a contact form enquiry
+ */
+export const useSubmitContact = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof submitContact>>,
+    TError,
+    { data: BodyType<ContactRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof submitContact>>,
+  TError,
+  { data: BodyType<ContactRequest> },
+  TContext
+> => {
+  return useMutation(getSubmitContactMutationOptions(options));
 };
 
 /**

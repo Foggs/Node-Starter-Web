@@ -55,6 +55,43 @@ export const CreateLeadBody = zod
   .describe("Lead capture from the landing-page demo modal");
 
 /**
+ * Public endpoint — no session cookie required. Appends a new row to the
+"Contact" tab of the Exit Coach Google Sheet (Timestamp | Name | Email | Message).
+Submissions are NOT deduplicated by email — the same person may legitimately
+submit multiple enquiries over time. All Sheets errors map to a generic 500
+with no detail leak. Per-IP rate limit: 3 requests per hour.
+
+ * @summary Submit a contact form enquiry
+ */
+export const submitContactBodyNameMin = 2;
+export const submitContactBodyNameMax = 100;
+
+export const submitContactBodyEmailMax = 254;
+
+export const submitContactBodyMessageMin = 10;
+export const submitContactBodyMessageMax = 2000;
+
+export const SubmitContactBody = zod
+  .object({
+    name: zod
+      .string()
+      .min(submitContactBodyNameMin)
+      .max(submitContactBodyNameMax)
+      .describe("Sender's full name (will be trimmed)"),
+    email: zod
+      .string()
+      .email()
+      .max(submitContactBodyEmailMax)
+      .describe("Sender's email address (will be lowercased)"),
+    message: zod
+      .string()
+      .min(submitContactBodyMessageMin)
+      .max(submitContactBodyMessageMax)
+      .describe("Free-form enquiry text (will be trimmed)"),
+  })
+  .describe("Contact form submission from the \/contact page");
+
+/**
  * Returns the 4 built-in practice scenarios. No session required.
  * @summary List all practice scenarios
  */

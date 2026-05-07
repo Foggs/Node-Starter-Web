@@ -68,6 +68,36 @@ export interface LeadResponse {
 }
 
 /**
+ * Contact form submission from the /contact page
+ */
+export interface ContactRequest {
+  /**
+   * Sender's full name (will be trimmed)
+   * @minLength 2
+   * @maxLength 100
+   */
+  name: string;
+  /**
+   * Sender's email address (will be lowercased)
+   * @maxLength 254
+   */
+  email: string;
+  /**
+   * Free-form enquiry text (will be trimmed)
+   * @minLength 10
+   * @maxLength 2000
+   */
+  message: string;
+}
+
+/**
+ * 201 body — submission stored in the Contact tab
+ */
+export interface ContactResponse {
+  success: boolean;
+}
+
+/**
  * Unique scenario identifier
  */
 export type ScenarioId = (typeof ScenarioId)[keyof typeof ScenarioId];

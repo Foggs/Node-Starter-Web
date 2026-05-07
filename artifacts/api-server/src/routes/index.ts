@@ -4,6 +4,7 @@ import pingRouter from "./ping.js";
 import scenariosRouter from "./scenarios.js";
 import personasRouter from "./personas.js";
 import leadsRouter from "./leads.js";
+import contactRouter from "./contact.js";
 import sessionRouter from "./session.js";
 import consentRouter from "./consent.js";
 import voiceRouter from "./voice.js";
@@ -20,6 +21,7 @@ router.use(pingRouter);
 router.use(scenariosRouter);
 router.use(personasRouter);
 router.use(leadsRouter);
+router.use(contactRouter);
 
 // Session-guarded (guard applied per-route inside each router)
 router.use(sessionRouter);

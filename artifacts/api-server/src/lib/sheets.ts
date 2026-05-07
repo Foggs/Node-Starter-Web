@@ -1,16 +1,18 @@
 /**
  * Google Sheets client — thin, typed wrapper around the Sheets v4 API.
  *
- * Used by POST /api/leads to capture lead data from the landing-page demo
- * modal into the "Exit Coach Leads" sheet.
+ * Used by:
+ *  - POST /api/leads     → appends to the "Sheet1" tab (lead capture)
+ *  - POST /api/contact   → appends to the "Contact" tab (contact form)
  *
  * Security & lifecycle rules:
  *  - Service account JSON is read from `GOOGLE_SERVICE_ACCOUNT_JSON` at first
  *    call site only — importing this module must have zero side effects so
  *    tests can `vi.mock` without ever touching `googleapis` or the network.
- *  - Sheet ID is read from `LEADS_SHEET_ID` at call time.
- *  - All config errors surface as `LeadsConfigError` so the route handler
- *    can map them to a generic 500 without leaking secrets.
+ *  - Sheet ID is read from `LEADS_SHEET_ID` at call time (the same sheet
+ *    holds both tabs).
+ *  - All config errors surface as `LeadsConfigError` so route handlers can
+ *    map them to a generic 500 without leaking secrets.
  */
 
 import { google, type sheets_v4 } from "googleapis";
@@ -22,6 +24,7 @@ const LEAD_SOURCE = "demo_modal";
 /** Sheet ranges — Sheet1 is the default tab created when a sheet is first made. */
 const EMAIL_COLUMN_RANGE = "Sheet1!C:C";
 const APPEND_RANGE = "Sheet1!A:D";
+const CONTACT_APPEND_RANGE = "Contact!A:D";
 
 export class LeadsConfigError extends Error {
   constructor(message: string) {
@@ -109,6 +112,30 @@ export async function appendLeadRow(name: string, email: string): Promise<void> 
     valueInputOption: "USER_ENTERED",
     requestBody: {
       values: [[timestamp, name, email, LEAD_SOURCE]],
+    },
+  });
+}
+
+/**
+ * Append a single contact-form row to the "Contact" tab:
+ * [Timestamp ISO, Name, Email, Message]. No deduplication — the same email
+ * may submit multiple enquiries over time.
+ */
+export async function appendContactRow(
+  name: string,
+  email: string,
+  message: string,
+): Promise<void> {
+  const sheets = getSheetsClient();
+  const spreadsheetId = getSheetId();
+  const timestamp = new Date().toISOString();
+
+  await sheets.spreadsheets.values.append({
+    spreadsheetId,
+    range: CONTACT_APPEND_RANGE,
+    valueInputOption: "USER_ENTERED",
+    requestBody: {
+      values: [[timestamp, name, email, message]],
     },
   });
 }

@@ -1,19 +1,15 @@
 import { Link } from "wouter";
-import { Linkedin } from "lucide-react";
 import {
   PRODUCT_LINKS,
   COMPANY_LINKS,
   SOCIAL_LINKS,
   type FooterLink,
-  type SocialIcon,
 } from "@/data/footerLinks";
+import { SocialIconButton, FOCUS_RING } from "@/components/SocialIconButton";
 
 interface FooterProps {
   onOpenDemo: () => void;
 }
-
-const FOCUS_RING =
-  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-400 focus-visible:ring-offset-2 focus-visible:ring-offset-[#1E2D4A] rounded-sm";
 
 export function Footer({ onOpenDemo }: FooterProps) {
   const year = new Date().getFullYear();
@@ -166,45 +162,3 @@ function FooterLinkItem({ item, onOpenDemo }: FooterLinkItemProps) {
   );
 }
 
-interface SocialIconButtonProps {
-  label: string;
-  href: string;
-  icon: SocialIcon;
-}
-
-function SocialIconButton({ label, href, icon }: SocialIconButtonProps) {
-  const isPlaceholder = href === "#";
-  return (
-    <a
-      href={href}
-      aria-label={label}
-      target={isPlaceholder ? undefined : "_blank"}
-      rel={isPlaceholder ? undefined : "noopener noreferrer"}
-      onClick={isPlaceholder ? (e) => e.preventDefault() : undefined}
-      className={`group inline-flex items-center justify-center w-[34px] h-[34px] rounded-lg
-                  border border-white/[0.12] text-[#8A9BB5]
-                  hover:border-amber-400 hover:text-amber-400
-                  transition-colors ${FOCUS_RING}
-                  ${isPlaceholder ? "cursor-not-allowed" : ""}`}
-    >
-      {icon === "linkedin" ? (
-        <Linkedin className="w-4 h-4" aria-hidden="true" />
-      ) : (
-        <XIcon />
-      )}
-    </a>
-  );
-}
-
-function XIcon() {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      focusable="false"
-      className="w-3.5 h-3.5 fill-current"
-    >
-      <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z" />
-    </svg>
-  );
-}

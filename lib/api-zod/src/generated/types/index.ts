@@ -10,6 +10,8 @@ export * from "./coachingTipRequest";
 export * from "./coachingTipResponse";
 export * from "./consentRequest";
 export * from "./consentResponse";
+export * from "./contactRequest";
+export * from "./contactResponse";
 export * from "./discardVoice200";
 export * from "./employeeTurnResponse";
 export * from "./employeeVoiceResponse";

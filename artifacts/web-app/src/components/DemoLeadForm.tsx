@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useCreateLead } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Loader2 } from "lucide-react";
+import { EMAIL_RE, EMAIL_MAX_LENGTH } from "@/lib/validation";
 
 /**
  * DemoLeadForm — name + email capture shown at the end of the demo modal.
@@ -21,7 +22,6 @@ export interface DemoLeadFormProps {
   onSubmittingChange?: (submitting: boolean) => void;
 }
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MIN_LOADER_MS = 300;
 
 export function DemoLeadForm({ onSuccess, onSubmittingChange }: DemoLeadFormProps) {
@@ -45,7 +45,9 @@ export function DemoLeadForm({ onSuccess, onSubmittingChange }: DemoLeadFormProp
   });
 
   const isValid =
-    name.trim().length >= 2 && EMAIL_RE.test(email.trim()) && email.trim().length <= 254;
+    name.trim().length >= 2 &&
+    EMAIL_RE.test(email.trim()) &&
+    email.trim().length <= EMAIL_MAX_LENGTH;
   const isSubmitting = mutation.isPending;
 
   function handleSubmit(e: React.FormEvent) {
