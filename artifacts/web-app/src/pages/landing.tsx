@@ -4,6 +4,7 @@ import { ShieldCheck, Mic, BarChart3, Clock, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DemoModal } from "@/components/DemoModal";
 import { FAQAccordion } from "@/components/FAQAccordion";
+import { Footer } from "@/components/Footer";
 
 const FEATURES = [
   {
@@ -105,7 +106,14 @@ export default function Landing() {
       </section>
 
       {/* features */}
-      <section className="border-t border-slate-800 px-6 py-16">
+      <section
+        id="how-it-works"
+        aria-labelledby="how-it-works-heading"
+        className="border-t border-slate-800 px-6 py-16 scroll-mt-20"
+      >
+        <h2 id="how-it-works-heading" className="sr-only">
+          How it works
+        </h2>
         <div className="max-w-4xl mx-auto grid sm:grid-cols-2 gap-8">
           {FEATURES.map(({ icon: Icon, title, body }) => (
             <div key={title} className="flex gap-4">
@@ -126,14 +134,7 @@ export default function Landing() {
       {/* faq */}
       <FAQAccordion />
 
-      {/* footer */}
-      <footer className="border-t border-slate-800 px-6 py-5">
-        <p className="text-center text-xs text-slate-600">
-          ExitCoach &copy; {new Date().getFullYear()} · Biometric data is
-          processed in-session only and never retained after the session
-          expires.
-        </p>
-      </footer>
+      <Footer onOpenDemo={() => setDemoOpen(true)} />
     </div>
   );
 }
