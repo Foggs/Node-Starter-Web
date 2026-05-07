@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { ShieldCheck, Mic, BarChart3, Clock, Play } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DemoModal } from "@/components/DemoModal";
+import { FAQAccordion } from "@/components/FAQAccordion";
 
 const FEATURES = [
   {
@@ -116,6 +117,9 @@ export default function Landing() {
           ))}
         </div>
       </section>
+
+      {/* faq */}
+      <FAQAccordion />
 
       {/* footer */}
       <footer className="border-t border-slate-800 px-6 py-5">

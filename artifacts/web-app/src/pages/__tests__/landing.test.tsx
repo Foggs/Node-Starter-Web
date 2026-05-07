@@ -58,6 +58,22 @@ describe("Landing page", () => {
     expect(link).toHaveAttribute("href", "/history");
   });
 
+  it("renders the FAQ section below the demo CTA", () => {
+    renderAt("/");
+
+    expect(
+      screen.getByRole("heading", {
+        level: 2,
+        name: /questions we hear a lot/i,
+      }),
+    ).toBeInTheDocument();
+
+    // Spot-check one objection-handling question is present.
+    expect(
+      screen.getByRole("button", { name: /is my voice data safe/i }),
+    ).toBeInTheDocument();
+  });
+
   it("opens the DemoModal when the Demo CTA is clicked", () => {
     renderAt("/");
     expect(screen.queryByTestId("demo-title-card")).not.toBeInTheDocument();
