@@ -42,8 +42,9 @@ export function FAQAccordion() {
 
   return (
     <section
+      id="faq"
       aria-labelledby="faq-heading"
-      className="border-t border-slate-800 px-6 py-16"
+      className="border-t border-slate-800 px-6 py-16 scroll-mt-20"
     >
       <div className="max-w-[720px] mx-auto w-full">
         <h2
