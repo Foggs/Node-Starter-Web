@@ -10,6 +10,7 @@ import Replay from "./pages/replay";
 import History from "./pages/history";
 import Contact from "./pages/contact";
 import ThankYou from "./pages/thank-you";
+import Privacy from "./pages/privacy";
 import NotFound from "./pages/not-found";
 
 export default function App() {
@@ -26,6 +27,7 @@ export default function App() {
       <Route path="/history" component={History} />
       <Route path="/contact" component={Contact} />
       <Route path="/thank-you" component={ThankYou} />
+      <Route path="/privacy" component={Privacy} />
       <Route component={NotFound} />
     </Switch>
   );

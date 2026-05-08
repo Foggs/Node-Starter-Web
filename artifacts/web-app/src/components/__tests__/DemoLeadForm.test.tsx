@@ -46,6 +46,23 @@ beforeEach(() => {
 });
 
 describe("DemoLeadForm", () => {
+  it("renders the v4.0 headline, subtext, and consent notice", () => {
+    renderForm();
+    expect(
+      screen.getByRole("heading", {
+        name: /that conversation just got a lot harder to avoid/i,
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/those improved lines play back in your own cloned voice/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/by continuing, you agree to our/i),
+    ).toBeInTheDocument();
+    const privacyLink = screen.getByRole("link", { name: /privacy policy/i });
+    expect(privacyLink).toHaveAttribute("href", "/privacy");
+  });
+
   it("disables submit until both fields are valid", () => {
     renderForm();
     const submit = screen.getByRole("button", { name: /start practicing/i });

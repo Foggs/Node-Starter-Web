@@ -76,11 +76,11 @@ describe("Landing page", () => {
 
   it("opens the DemoModal when the Demo CTA is clicked", () => {
     renderAt("/");
-    expect(screen.queryByTestId("demo-title-card")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("demo-scene-setter")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByTestId("demo-cta"));
 
-    // Title card is the first thing rendered by the modal.
-    expect(screen.getByTestId("demo-title-card")).toBeInTheDocument();
+    // The scene-setter is the first thing rendered by the modal in v4.0.
+    expect(screen.getByTestId("demo-scene-setter")).toBeInTheDocument();
   });
 });

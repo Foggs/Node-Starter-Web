@@ -1,76 +1,53 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
 
 /**
- * useDemoPlayback — orchestrates the timed sequence inside the landing
- * page demo modal.
+ * useDemoPlayback — orchestrates the user-paced demo modal sequence (v4.0).
  *
- * The state machine is a discriminated union of named phases. Phases that
- * auto-advance after a fixed duration are listed in `PHASE_DURATIONS`; the
- * single internal effect schedules a timer for whichever timed phase is
- * currently active. Phases that wait on an external signal (audio playback
- * ending, lead form submitting) advance only when the consumer dispatches
- * the matching action.
+ * The state machine is a discriminated union of named phases. Almost every
+ * phase is **click-gated** (waits for an explicit user action). The single
+ * exception is `post_replay_pause`, a 1.5s breath between the final improved
+ * turn and the lead-capture form sliding in.
  *
- * Pause is modelled as a dedicated `paused` state that records the phase
- * to resume into and the millisecond budget remaining for that phase, so
- * resume restarts only the unspent portion of the timer.
+ * Three event-shaped advances drive the flow:
+ *   - `notifyContinue()` for scene-setter / awaiting_continue_* / transition_card
+ *     (Begin → / Continue → / Show me → clicks).
+ *   - `notifyAudioEnded()` for `playing_*` phases (audio element fired `ended`).
+ *   - `submit*()` callbacks for the lead form.
  *
- * Source-of-truth timing table: demo-feature.md §"Playback Timing Sequence".
+ * Pause is modelled as a dedicated `paused` state. Per spec, pause is only
+ * meaningful during `playing_*` phases — on cards / awaiting_continue / lead
+ * form, nothing is in motion to pause.
+ *
+ * Source-of-truth: demo-feature-revised.md §"useDemoPlayback State Machine".
  */
 
 // ─── phase model ─────────────────────────────────────────────────────────────
 
-/** Phases that auto-advance after a fixed duration. */
-export type TimedPhase =
-  | "showing_tip_1"
-  | "arc_dot_1"
-  | "showing_tip_2"
-  | "arc_dot_2"
-  | "showing_tip_3"
-  | "arc_dot_3"
-  | "arc_done"
-  | "tease_header"
-  | "tease_closing"
-  | "reveal_copy";
+/** The only timed phase in the v4.0 flow — 1.5s breath after the improved replay. */
+export type TimedPhase = "post_replay_pause";
 
-/**
- * Phases that wait on an external event (user click, audio end, form submit).
- * `title_card` waits for an explicit Continue click — no auto-dismiss timer.
- */
+/** Phases that wait on an external event (user click, audio ended, form submit). */
 export type EventDrivenPhase =
-  | "title_card"
-  | "playing_employee_1"
-  | "playing_manager_2"
-  | "playing_employee_3"
-  | "tease_audio"
+  | "scene_setter"
+  | "playing_turn_1"
+  | "awaiting_continue_1"
+  | "playing_turn_2"
+  | "awaiting_continue_2"
+  | "playing_turn_3"
+  | "awaiting_continue_3"
+  | "transition_card"
+  | "playing_improved_e1"
+  | "playing_improved_m2"
+  | "playing_improved_e3"
+  | "playing_improved_m3"
   | "lead_capture"
   | "submitting";
 
 export type Phase = "idle" | "complete" | "paused" | TimedPhase | EventDrivenPhase;
 
-/**
- * Durations in ms for each timed phase. Sum + audio runtime ≈ 95s,
- * matching the spec total. (title_card is event-driven now — user clicks
- * Continue when ready.)
- *
- *  - `showing_tip_*`  2300ms =  800 gap + 1500 display
- *  - `arc_dot_*`       800ms (hold before next turn or tease)
- *  - `arc_done`        600ms (gap between arc-3 and tease slide-in)
- *  - `tease_header`    400ms (header fade before improved audio plays)
- *  - `tease_closing`  1500ms ("In a real session, that voice would be yours.")
- *  - `reveal_copy`    1200ms = 400 fade-in + 800 hold
- */
+/** Duration in ms for each timed phase. v4.0 has only one. */
 export const PHASE_DURATIONS: Record<TimedPhase, number> = {
-  showing_tip_1: 2300,
-  arc_dot_1: 800,
-  showing_tip_2: 2300,
-  arc_dot_2: 800,
-  showing_tip_3: 2300,
-  arc_dot_3: 800,
-  arc_done: 600,
-  tease_header: 400,
-  tease_closing: 1500,
-  reveal_copy: 1200,
+  post_replay_pause: 1500,
 };
 
 // ─── state ───────────────────────────────────────────────────────────────────
@@ -87,7 +64,7 @@ interface PausedPhaseState {
   resumeTo: Exclude<Phase, "paused">;
   /**
    * Remaining ms in `resumeTo`'s timer when paused. 0 for event-driven
-   * phases (no timer to resume).
+   * phases (no timer to resume — only audio playback resumes).
    */
   remainingMs: number;
 }
@@ -100,7 +77,7 @@ export type DemoPlaybackAction =
   | { type: "START" }
   | { type: "TIMER_ELAPSED" }
   | { type: "AUDIO_ENDED" }
-  | { type: "SKIP_TITLE" }
+  | { type: "CONTINUE" }
   | { type: "SUBMIT" }
   | { type: "SUBMIT_OK" }
   | { type: "SUBMIT_ERROR" }
@@ -112,29 +89,23 @@ export type DemoPlaybackAction =
 
 /**
  * The canonical forward order. Indexing into this array gives the next phase
- * after `TIMER_ELAPSED` for timed phases and after `AUDIO_ENDED` / `SUBMIT_OK`
- * for event-driven phases.
- *
- * Typed as `Exclude<Phase, "paused">[]` to keep `indexOf` callable with any
- * non-paused phase, including the unreachable "idle" branch (which falls
- * through the -1 guard to "complete").
+ * after the matching dispatch (CONTINUE for cards / awaiting_continue,
+ * AUDIO_ENDED for playing_*, TIMER_ELAPSED for post_replay_pause).
  */
 const FORWARD: Exclude<Phase, "paused">[] = [
-  "title_card",
-  "playing_employee_1",
-  "showing_tip_1",
-  "arc_dot_1",
-  "playing_manager_2",
-  "showing_tip_2",
-  "arc_dot_2",
-  "playing_employee_3",
-  "showing_tip_3",
-  "arc_dot_3",
-  "arc_done",
-  "tease_header",
-  "tease_audio",
-  "tease_closing",
-  "reveal_copy",
+  "scene_setter",
+  "playing_turn_1",
+  "awaiting_continue_1",
+  "playing_turn_2",
+  "awaiting_continue_2",
+  "playing_turn_3",
+  "awaiting_continue_3",
+  "transition_card",
+  "playing_improved_e1",
+  "playing_improved_m2",
+  "playing_improved_e3",
+  "playing_improved_m3",
+  "post_replay_pause",
   "lead_capture",
   "submitting",
   "complete",
@@ -147,8 +118,26 @@ function nextPhase(current: Exclude<Phase, "paused">): Exclude<Phase, "paused"> 
 }
 
 function isTimedPhase(p: Phase): p is TimedPhase {
-  return p in PHASE_DURATIONS;
+  return p === "post_replay_pause";
 }
+
+const PLAYING_PHASES = new Set<Phase>([
+  "playing_turn_1",
+  "playing_turn_2",
+  "playing_turn_3",
+  "playing_improved_e1",
+  "playing_improved_m2",
+  "playing_improved_e3",
+  "playing_improved_m3",
+]);
+
+const CONTINUE_PHASES = new Set<Phase>([
+  "scene_setter",
+  "awaiting_continue_1",
+  "awaiting_continue_2",
+  "awaiting_continue_3",
+  "transition_card",
+]);
 
 const initialState: ActivePhaseState = { phase: "idle", startedAt: 0 };
 
@@ -159,12 +148,13 @@ export function demoPlaybackReducer(
   switch (action.type) {
     case "START": {
       if (state.phase !== "idle") return state;
-      return { phase: "title_card", startedAt: Date.now() };
+      return { phase: "scene_setter", startedAt: Date.now() };
     }
 
-    case "SKIP_TITLE": {
-      if (state.phase !== "title_card") return state;
-      return { phase: nextPhase("title_card"), startedAt: Date.now() };
+    case "CONTINUE": {
+      if (state.phase === "paused") return state;
+      if (!CONTINUE_PHASES.has(state.phase)) return state;
+      return { phase: nextPhase(state.phase), startedAt: Date.now() };
     }
 
     case "TIMER_ELAPSED": {
@@ -175,13 +165,7 @@ export function demoPlaybackReducer(
 
     case "AUDIO_ENDED": {
       if (state.phase === "paused") return state;
-      const audioPhases: Phase[] = [
-        "playing_employee_1",
-        "playing_manager_2",
-        "playing_employee_3",
-        "tease_audio",
-      ];
-      if (!audioPhases.includes(state.phase)) return state;
+      if (!PLAYING_PHASES.has(state.phase)) return state;
       return { phase: nextPhase(state.phase), startedAt: Date.now() };
     }
 
@@ -196,16 +180,15 @@ export function demoPlaybackReducer(
     }
 
     case "SUBMIT_ERROR": {
-      // Drop back to lead_capture so the form can show an error and retry.
       if (state.phase !== "submitting") return state;
       return { phase: "lead_capture", startedAt: Date.now() };
     }
 
     case "PAUSE": {
       if (state.phase === "paused") return state;
-      if (state.phase === "idle" || state.phase === "complete") return state;
-      // Title card has no pause button per spec — do nothing if asked.
-      if (state.phase === "title_card") return state;
+      // Per spec: pause only valid during active audio playback. On cards,
+      // awaiting_continue, the lead form, idle, complete — pause is a no-op.
+      if (!PLAYING_PHASES.has(state.phase)) return state;
 
       const remainingMs = isTimedPhase(state.phase)
         ? Math.max(0, PHASE_DURATIONS[state.phase] - (action.now - state.startedAt))
@@ -215,11 +198,10 @@ export function demoPlaybackReducer(
 
     case "RESUME": {
       if (state.phase !== "paused") return state;
-      // Restart the timer for the resumed phase by setting startedAt to a
-      // value such that (now - startedAt) === (duration - remainingMs).
-      // For event-driven phases, startedAt is irrelevant.
       const target = state.resumeTo;
       if (isTimedPhase(target)) {
+        // Restart the timer's remaining slice by setting startedAt back so
+        // (now - startedAt) === (duration - remainingMs).
         const elapsed = PHASE_DURATIONS[target] - state.remainingMs;
         return { phase: target, startedAt: action.now - elapsed };
       }
@@ -244,19 +226,19 @@ export interface UseDemoPlaybackReturn {
   phase: Phase;
   /** When paused, the phase that will be resumed into. Otherwise null. */
   pausedResumeTo: Exclude<Phase, "paused"> | null;
-  /** Begin the demo (idle → title_card). */
+  /** Begin the demo (idle → scene_setter). */
   start: () => void;
-  /** User clicked Continue on the title card → start playback. */
-  skipTitleCard: () => void;
-  /** Tell the machine the audio for the current `playing_*` / `tease_audio` phase finished. */
+  /** User clicked Begin / Continue / Show me on a card or awaiting_continue. */
+  notifyContinue: () => void;
+  /** Audio finished for the current `playing_*` phase. */
   notifyAudioEnded: () => void;
   /** Submit the lead form (lead_capture → submitting). */
   submit: () => void;
   /** Lead form submission resolved successfully. */
   submitSucceeded: () => void;
-  /** Lead form submission failed; UI will fall back to lead_capture. */
+  /** Lead form submission failed; UI falls back to lead_capture. */
   submitFailed: () => void;
-  /** Pause whatever's running. No-op during title_card / idle / complete. */
+  /** Pause whatever's playing. No-op outside `playing_*` phases. */
   pause: () => void;
   /** Resume from pause. */
   resume: () => void;
@@ -267,11 +249,10 @@ export interface UseDemoPlaybackReturn {
 export function useDemoPlayback(): UseDemoPlaybackReturn {
   const [state, dispatch] = useReducer(demoPlaybackReducer, initialState);
 
-  // ── timed-phase scheduler ─────────────────────────────────────────────────
+  // ── timed-phase scheduler (only post_replay_pause uses this in v4.0) ─────
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   useEffect(() => {
-    // Always cancel a pending timer when the phase changes — paused, closed,
-    // or otherwise.
+    // Cancel any pending timer when the phase changes (paused, closed, etc.).
     if (timerRef.current !== null) {
       clearTimeout(timerRef.current);
       timerRef.current = null;
@@ -297,7 +278,7 @@ export function useDemoPlayback(): UseDemoPlaybackReturn {
   }, [state]);
 
   const start = useCallback(() => dispatch({ type: "START" }), []);
-  const skipTitleCard = useCallback(() => dispatch({ type: "SKIP_TITLE" }), []);
+  const notifyContinue = useCallback(() => dispatch({ type: "CONTINUE" }), []);
   const notifyAudioEnded = useCallback(
     () => dispatch({ type: "AUDIO_ENDED" }),
     [],
@@ -319,7 +300,7 @@ export function useDemoPlayback(): UseDemoPlaybackReturn {
     phase: state.phase,
     pausedResumeTo: state.phase === "paused" ? state.resumeTo : null,
     start,
-    skipTitleCard,
+    notifyContinue,
     notifyAudioEnded,
     submit,
     submitSucceeded,

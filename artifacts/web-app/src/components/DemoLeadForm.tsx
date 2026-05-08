@@ -63,15 +63,11 @@ export function DemoLeadForm({ onSuccess, onSubmittingChange }: DemoLeadFormProp
   return (
     <div data-testid="demo-lead-form" className="space-y-4">
       <div className="space-y-2">
-        <p className="text-sm text-slate-600 leading-relaxed">
-          You just experienced an AI-powered practice session — emotional pushback,
-          real-time coaching, and an improved version of your own words.
-        </p>
         <h3 className="text-lg font-semibold text-slate-900">
           That conversation just got a lot harder to avoid.
         </h3>
-        <p className="text-sm text-slate-600">
-          In a real session, the improved version plays back in your own cloned voice.
+        <p className="text-sm text-slate-600 leading-relaxed">
+          In a real session, those improved lines play back in your own cloned voice.
           Start practicing free.
         </p>
       </div>
