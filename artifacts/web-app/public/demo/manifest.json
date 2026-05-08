@@ -2,22 +2,32 @@
   "$comment": "Demo audio manifest. expectedDurationMs is the spec target — useDemoPlayback uses it for timer math even if the actual file is a silent placeholder. When real audio replaces the placeholders, update durations to match.",
   "files": {
     "employee-turn-1.mp3": {
-      "expectedDurationMs": 9800,
+      "expectedDurationMs": 9900,
       "voice": "Arnold",
       "stability": 0.45
     },
     "manager-turn-2-original.mp3": {
-      "expectedDurationMs": 10800,
+      "expectedDurationMs": 10400,
       "voice": "Adam",
       "stability": 0.45
     },
     "employee-turn-3.mp3": {
-      "expectedDurationMs": 10100,
+      "expectedDurationMs": 10500,
       "voice": "Arnold",
       "stability": 0.45
     },
     "manager-turn-2-improved.mp3": {
-      "expectedDurationMs": 16300,
+      "expectedDurationMs": 15800,
+      "voice": "Adam",
+      "stability": 0.7
+    },
+    "employee-turn-3-replay.mp3": {
+      "expectedDurationMs": 11200,
+      "voice": "Arnold",
+      "stability": 0.45
+    },
+    "manager-turn-3-improved.mp3": {
+      "expectedDurationMs": 18100,
       "voice": "Adam",
       "stability": 0.7
     }

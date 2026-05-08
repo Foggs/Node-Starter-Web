@@ -317,6 +317,21 @@
     animation: turn-fade-in 180ms ease-out both;
   }
 
+  /* ── Demo narration-zone fade-in ─────────────────────────────────────────
+     Used by the v4.0 demo modal to stage the reveal of the coaching tip,
+     narration text, and Continue button after each turn's audio finishes.
+     The element is rendered into the DOM the moment its phase begins; the
+     `[animation-delay:Xms]` arbitrary class on each child decides when its
+     opacity ramps from 0 to 1. CSS-only — no JS timers, no setState churn.
+     Pair with `opacity-0` so the pre-animation state is invisible. */
+  @keyframes demo-fade-in {
+    from { opacity: 0; transform: translateY(4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .demo-fade-in {
+    animation: demo-fade-in 350ms ease-out both;
+  }
+
   /* ── Reduced-motion guard ────────────────────────────────────────────────
      Disable every motion effect introduced by Task #31 when the user has
      `prefers-reduced-motion: reduce`. State changes still happen instantly
@@ -325,7 +340,8 @@
     .animate-mic-pulse,
     .animate-mic-pulse-fallback,
     .page-enter,
-    .turn-enter {
+    .turn-enter,
+    .demo-fade-in {
       animation: none !important;
       transform: none !important;
       transition: none !important;

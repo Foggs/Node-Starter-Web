@@ -87,6 +87,24 @@ const CLIPS: ClipSpec[] = [
     text:
       "Six years is significant, and I want to acknowledge that directly. This decision wasn't made lightly — your role is being eliminated because of a structural change in the organisation, not because of anything you did or didn't do. That distinction matters, and I want to make sure you hear it clearly.",
   },
+  {
+    // v4.0: same transcript as employee-turn-3.mp3, but cued separately so
+    // the improved replay can preload it independently of the original.
+    filename: "employee-turn-3-replay.mp3",
+    voiceId: VOICE_ID_ARNOLD,
+    stability: 0.45,
+    text:
+      "Not a reflection of my performance? Then why me? There are people in my department who joined six months ago. Why isn't it their position being eliminated? This feels completely arbitrary.",
+  },
+  {
+    // v4.0: the manager response that never happened in the original — the
+    // improved replay shows what could have followed Alex's escalation.
+    filename: "manager-turn-3-improved.mp3",
+    voiceId: VOICE_ID_ADAM,
+    stability: 0.7,
+    text:
+      "I hear you — and that frustration makes complete sense. I can't walk you through every decision that was made, but what I can tell you is that this wasn't arbitrary. What I'd like to focus on now is making sure you have everything you need going forward — severance, references, timing. Can we do that together?",
+  },
 ];
 
 const MANIFEST_PATH = resolve(PUBLIC_DEMO, "manifest.json");
